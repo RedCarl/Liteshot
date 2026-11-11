@@ -430,6 +430,7 @@ final class SelectionOverlayView: NSView {
             if action == .annotate {
                 button.layer?.backgroundColor = NSColor.controlAccentColor.cgColor
             }
+            button.toolTip = "\(action.rawValue + 1)"
             button.frame = CGRect(x: x, y: padding, width: buttonWidth, height: buttonHeight)
             bar.addSubview(button)
             x += buttonWidth + gap
@@ -457,11 +458,26 @@ final class SelectionOverlayView: NSView {
     }
 
     @objc private func actionTapped(_ sender: NSButton) {
-        guard let action = SelectionAction(rawValue: sender.tag),
-              let image = pendingImage,
-              let pixelRect = pendingPixelRect else { return }
+        guard let action = SelectionAction(rawValue: sender.tag) else { return }
+        perform(action)
+    }
+
+    private func perform(_ action: SelectionAction) {
+        guard let image = pendingImage, let pixelRect = pendingPixelRect else { return }
         hideActionBar()
         onAction?(action, image, pixelRect)
+    }
+
+    private func actionForKeyCode(_ keyCode: UInt16) -> SelectionAction? {
+        switch keyCode {
+        case 18: return .annotate
+        case 19: return .copy
+        case 20: return .save
+        case 21: return .scroll
+        case 23: return .ocr
+        case 22: return .pin
+        default: return nil
+        }
     }
 
     private func performPendingAction() {
@@ -693,6 +709,11 @@ final class SelectionOverlayView: NSView {
     }
 
     override func keyDown(with event: NSEvent) {
+        if actionBar != nil, let action = actionForKeyCode(event.keyCode) {
+            perform(action)
+            return
+        }
+
         let step: CGFloat = event.modifierFlags.contains(.shift) ? 10 : 1
 
         switch event.keyCode {
