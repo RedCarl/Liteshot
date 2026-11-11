@@ -78,6 +78,14 @@ final class OCRResultWindowController: NSWindowController {
         fatalError("init(coder:) has not been implemented")
     }
 
+    func showLast() {
+        if let window, !window.isVisible {
+            window.center()
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        window?.makeKeyAndOrderFront(nil)
+    }
+
     func show(title: String, text: String) {
         titleLabel.stringValue = title
         textView.string = text.isEmpty ? L10n.t("（未识别到内容）", "(No content recognized)") : text

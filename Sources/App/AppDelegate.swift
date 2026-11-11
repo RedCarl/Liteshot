@@ -71,6 +71,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // 保留 OCR / 二维码为快捷动作。
         menu.addItem(menuItem(title: L10n.t("截图 OCR", "Text OCR"), action: #selector(captureOCR)))
         menu.addItem(menuItem(title: L10n.t("静默 OCR", "Silent OCR"), action: #selector(captureSilentOCR)))
+        menu.addItem(menuItem(title: L10n.t("显示 OCR 窗口", "Show OCR Window"), action: #selector(showOCRWindow)))
         menu.addItem(menuItem(title: L10n.t("截图二维码", "QR / Barcode"), action: #selector(captureQR)))
 
         menu.addItem(.separator())
@@ -142,6 +143,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func captureSilentOCR() {
         CaptureCoordinator.shared.begin(.ocrSilent)
+    }
+
+    @objc private func showOCRWindow() {
+        OCRResultWindowController.shared.showLast()
     }
 
     @objc private func captureRegion() {
@@ -281,6 +286,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if CommandLine.arguments.contains("--check-updates") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                 UpdateChecker.shared.check()
+            }
+        }
+
+        if CommandLine.arguments.contains("--show-ocr") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                OCRResultWindowController.shared.showLast()
             }
         }
 
