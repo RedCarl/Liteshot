@@ -47,6 +47,12 @@ jobs:
             CONFIGURATION_BUILD_DIR="$PWD/dist" \
             build
 
+      - name: Sign (ad-hoc)
+        run: |
+          codesign --force --deep --sign - dist/Liteshot.app
+          codesign --verify --deep --strict dist/Liteshot.app
+          codesign -dv --verbose=2 dist/Liteshot.app
+
       - name: Package
         run: |
           cd dist

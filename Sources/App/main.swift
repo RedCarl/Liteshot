@@ -74,6 +74,19 @@ if CommandLine.arguments.contains("--selftest-save") {
     dispatchMain()
 }
 
+if CommandLine.arguments.contains("--permission") || CommandLine.arguments.contains("--permission-file") {
+    let text = """
+    app: \(Bundle.main.bundleURL.path)
+    bundle: \(Bundle.main.bundleIdentifier ?? "nil")
+    preflight: \(ScreenPermission.isGranted)
+    """
+    print(text)
+    if CommandLine.arguments.contains("--permission-file") {
+        try? text.write(toFile: "/tmp/liteshot-permission.txt", atomically: true, encoding: .utf8)
+    }
+    exit(ScreenPermission.isGranted ? 0 : 2)
+}
+
 if CommandLine.arguments.contains("--print-lang") {
     print("bundle:", Bundle.main.bundleIdentifier ?? "nil")
     print("stored:", UserDefaults.standard.string(forKey: L10n.languageKey) ?? "nil")

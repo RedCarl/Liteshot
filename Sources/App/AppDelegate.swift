@@ -214,7 +214,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func openScreenRecordingSettings() {
-        ScreenPermission.openSystemSettings()
+        CaptureCoordinator.shared.showPermissionGuide()
     }
 
     // MARK: - Debug hooks

@@ -52,11 +52,16 @@ final class CaptureCoordinator {
         guard !isCapturing, overlayWindow == nil, countdownWindow == nil,
               scrollSession == nil, crossScreenController == nil else { return }
 
-        guard ScreenPermission.isGranted else {
-            showPermissionGuide()
-            return
+        Task { @MainActor in
+            guard await ScreenPermission.probe() else {
+                self.showPermissionGuide()
+                return
+            }
+            self.beginAfterPermission(mode)
         }
+    }
 
+    private func beginAfterPermission(_ mode: CaptureMode) {
         let delay = mode == .delayed ? max(1, AppSettings.shared.delaySeconds) : 0
         if delay > 0 {
             runCountdown(seconds: delay) { [weak self] in
@@ -649,26 +654,35 @@ final class CaptureCoordinator {
         return CGRect(x: x, y: y, width: cgRect.width, height: cgRect.height)
     }
 
-    private func showPermissionGuide() {
+    func showPermissionGuide() {
+        let path = ScreenPermission.appPath
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = L10n.t("需要屏幕录制权限", "Screen Recording Permission Required")
-        alert.informativeText = L10n.t("在 系统设置 → 隐私与安全性 → 屏幕与系统音频录制 中勾选 Liteshot。\n授权后可能需要重新启动 Liteshot。", "Enable Liteshot in System Settings → Privacy & Security → Screen & System Audio Recording.\nYou may need to relaunch Liteshot after granting access.")
+        alert.informativeText = L10n.t(
+            "当前 App：\(path)\n\n请在 系统设置 → 隐私与安全性 → 屏幕与系统音频录制 中勾选 Liteshot。\n如果列表里已有旧的 Liteshot 条目，先移除它，再用「+」添加当前 App；授权后必须退出并重启 Liteshot。\n\n提示：未签名的旧版本可能无法保存授权，请使用最新构建。",
+            "Current app: \(path)\n\nEnable Liteshot in System Settings → Privacy & Security → Screen & System Audio Recording.\nIf an old Liteshot entry exists, remove it and add the current app with “+”. You must quit and relaunch Liteshot after granting access.\n\nNote: older unsigned builds may fail to persist the grant; use the latest build."
+        )
         alert.addButton(withTitle: L10n.t("重新检查", "Check Again"))
         alert.addButton(withTitle: L10n.t("打开系统设置", "Open System Settings"))
+        alert.addButton(withTitle: L10n.t("退出并重启", "Quit and Relaunch"))
         alert.addButton(withTitle: L10n.t("取消", "Cancel"))
 
         NSApp.activate(ignoringOtherApps: true)
         switch alert.runModal() {
         case .alertFirstButtonReturn:
-            if ScreenPermission.isGranted {
-                perform(.region)
-            } else {
-                showPermissionGuide()
+            Task { @MainActor in
+                if await ScreenPermission.probe() {
+                    perform(.region)
+                } else {
+                    showPermissionGuide()
+                }
             }
         case .alertSecondButtonReturn:
             _ = ScreenPermission.request()
             ScreenPermission.openSystemSettings()
+        case .alertThirdButtonReturn:
+            ScreenPermission.relaunchApp()
         default:
             break
         }

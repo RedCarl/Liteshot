@@ -73,6 +73,18 @@ git push origin v0.2.0
 tccutil reset ScreenCapture com.redcarl.Liteshot
 ```
 
+### 屏幕录制权限排查
+
+- 授权对象必须是 **当前运行的 Liteshot.app 本身**，不是 Terminal、iTerm、IDE 或 DSH。
+- 打开 系统设置 → 隐私与安全性 → 屏幕与系统音频录制，先移除旧的 Liteshot 条目，再用「+」添加当前 App（例如 `/Applications/Liteshot.app`）。
+- 授权后必须完全退出并重启 App；权限弹窗里的「退出并重启」按钮会代劳。
+- 从 v0.1.2 起构建产物会做 ad-hoc 签名，签名标识是 `com.redcarl.Liteshot`；更早的未签名构建可能无法把授权持久化，建议升级。
+- 诊断当前 App 的权限状态：
+
+```bash
+/Applications/Liteshot.app/Contents/MacOS/Liteshot --permission
+```
+
 ## 使用
 
 | 操作 | 方式 |

@@ -22,4 +22,10 @@ xcodebuild \
 
 APP="$(xcodebuild -project Liteshot.xcodeproj -scheme Liteshot -showBuildSettings 2>/dev/null \
   | awk '/ BUILT_PRODUCTS_DIR/ {dir=$3} / FULL_PRODUCT_NAME/ {name=$3} END {print dir "/" name}')"
+
+# Ad-hoc 签名：让 TCC 按 bundle id 记录权限，而不是 linker 生成的 "Liteshot" 标识。
+codesign --force --deep --sign - "$APP" >/dev/null 2>&1 || {
+  echo "警告：ad-hoc 签名失败，屏幕录制权限可能无法持久保存" >&2
+}
+
 echo "$APP"
