@@ -400,17 +400,17 @@ final class SelectionOverlayView: NSView {
         pendingPixelRect = pixelRect
         actionBar?.removeFromSuperview()
 
-        let items: [(String, SelectionAction)] = [
-            (L10n.t("标注", "Annotate"), .annotate),
-            (L10n.t("复制", "Copy"), .copy),
-            (L10n.t("保存", "Save"), .save),
-            (L10n.t("滚动", "Scroll"), .scroll),
-            ("OCR", .ocr),
-            (L10n.t("钉图", "Pin"), .pin),
+        let items: [(title: String, symbol: String, action: SelectionAction)] = [
+            (L10n.t("标注", "Annotate"), "pencil.tip.crop.circle", .annotate),
+            (L10n.t("复制", "Copy"), "doc.on.doc", .copy),
+            (L10n.t("保存", "Save"), "square.and.arrow.down", .save),
+            (L10n.t("滚动", "Scroll"), "arrow.up.and.down", .scroll),
+            ("OCR", "text.viewfinder", .ocr),
+            (L10n.t("钉图", "Pin"), "pin", .pin),
         ]
 
-        let buttonWidth: CGFloat = 52
-        let buttonHeight: CGFloat = 26
+        let buttonWidth: CGFloat = 40
+        let buttonHeight: CGFloat = 30
         let gap: CGFloat = 4
         let padding: CGFloat = 6
         let barWidth = padding * 2 + buttonWidth * CGFloat(items.count) + gap * CGFloat(items.count - 1)
@@ -422,18 +422,24 @@ final class SelectionOverlayView: NSView {
         bar.layer?.cornerRadius = 8
 
         var x = padding
-        for (title, action) in items {
-            let button = NSButton(title: title, target: self, action: #selector(actionTapped(_:)))
-            button.tag = action.rawValue
+        for (index, item) in items.enumerated() {
+            let button = NSButton(title: "", target: self, action: #selector(actionTapped(_:)))
+            button.tag = item.action.rawValue
             button.isBordered = false
-            button.font = .systemFont(ofSize: 12, weight: .medium)
+            let configuration = NSImage.SymbolConfiguration(pointSize: 15, weight: .medium)
+            button.image = NSImage(
+                systemSymbolName: item.symbol,
+                accessibilityDescription: item.title
+            )?.withSymbolConfiguration(configuration)
+            button.imagePosition = .imageOnly
+            button.imageScaling = .scaleProportionallyDown
             button.contentTintColor = .white
             button.wantsLayer = true
             button.layer?.cornerRadius = 4
-            if action == .annotate {
+            if item.action == .annotate {
                 button.layer?.backgroundColor = NSColor.controlAccentColor.cgColor
             }
-            button.toolTip = "\(action.rawValue + 1)"
+            button.toolTip = "\(item.title) (\(index + 1))"
             button.frame = CGRect(x: x, y: padding, width: buttonWidth, height: buttonHeight)
             bar.addSubview(button)
             x += buttonWidth + gap
