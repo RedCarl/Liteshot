@@ -22,6 +22,10 @@ final class PinManager {
         hidden = false
     }
 
+    func saveFrontmost() {
+        controllers.last?.presentSavePanel()
+    }
+
     func pinFromPasteboard() -> Bool {
         let pasteboard = NSPasteboard.general
         guard let data = pasteboard.data(forType: .png) ?? pasteboard.data(forType: .tiff),

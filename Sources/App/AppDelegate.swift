@@ -414,6 +414,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 if let image = Self.makeDemoPinImage() {
                     PinManager.shared.pin(image)
                 }
+                if CommandLine.arguments.contains("--pin-save-demo") {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                        PinManager.shared.saveFrontmost()
+                    }
+                }
             }
         }
 

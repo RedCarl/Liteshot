@@ -1,4 +1,5 @@
 import AppKit
+import UniformTypeIdentifiers
 
 final class PinWindow: NSWindow {
     override var canBecomeKey: Bool { true }
@@ -65,6 +66,7 @@ final class PinWindowController: NSWindowController, NSWindowDelegate {
         view.onZoom = { [weak self] factor in self?.zoom(by: factor) }
         view.onOpacity = { [weak self] delta in self?.changeOpacity(by: delta) }
         view.onMove = { [weak self] dx, dy in self?.move(dx: dx, dy: dy) }
+        view.onSave = { [weak self] in self?.saveImage() }
         view.menu = makeMenu()
         window.contentView = view
         window.delegate = self
@@ -134,6 +136,7 @@ final class PinWindowController: NSWindowController, NSWindowDelegate {
         menu.addItem(withTitle: L10n.t("降低不透明度", "Decrease Opacity"), action: #selector(menuOpacityDown), keyEquivalent: "").target = self
         menu.addItem(.separator())
         menu.addItem(withTitle: L10n.t("复制图片", "Copy Image"), action: #selector(menuCopy), keyEquivalent: "").target = self
+        menu.addItem(withTitle: L10n.t("保存到 Downloads", "Save to Downloads"), action: #selector(menuSave), keyEquivalent: "s").target = self
         menu.addItem(withTitle: L10n.t("关闭贴图", "Close Pin"), action: #selector(menuClose), keyEquivalent: "").target = self
         return menu
     }
@@ -143,6 +146,29 @@ final class PinWindowController: NSWindowController, NSWindowDelegate {
     @objc private func menuOpacityUp() { changeOpacity(by: 0.1) }
     @objc private func menuOpacityDown() { changeOpacity(by: -0.1) }
     @objc private func menuCopy() { copyImage() }
+
+    @objc private func menuSave() { saveImage() }
+
+    func presentSavePanel() { saveImage() }
+
+    private func saveImage() {
+        guard let png = ImageEncoding.pngData(from: image) else {
+            NSSound.beep()
+            return
+        }
+
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        let directory = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+            ?? FileManager.default.homeDirectoryForCurrentUser
+        let url = directory.appendingPathComponent("Liteshot-Pin-\(formatter.string(from: Date())).png")
+        do {
+            try png.write(to: url)
+            NSSound(named: "Glass")?.play()
+        } catch {
+            NSSound.beep()
+        }
+    }
     @objc private func menuClose() { closePin() }
 
     func windowWillClose(_ notification: Notification) {
@@ -160,6 +186,7 @@ private final class PinImageView: NSView {
     var onZoom: ((CGFloat) -> Void)?
     var onOpacity: ((CGFloat) -> Void)?
     var onMove: ((CGFloat, CGFloat) -> Void)?
+    var onSave: (() -> Void)?
 
     init(image: CGImage) {
         self.image = image
@@ -229,6 +256,10 @@ private final class PinImageView: NSView {
             }
             if characters == "-" {
                 onOpacity?(-0.1)
+                return
+            }
+            if characters == "s" {
+                onSave?()
                 return
             }
         }
