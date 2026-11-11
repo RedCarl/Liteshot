@@ -77,6 +77,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(menuItem(title: L10n.t("截图 OCR", "Text OCR"), action: #selector(captureOCR)))
         menu.addItem(menuItem(title: L10n.t("静默 OCR", "Silent OCR"), action: #selector(captureSilentOCR)))
         menu.addItem(menuItem(title: L10n.t("显示 OCR 窗口", "Show OCR Window"), action: #selector(showOCRWindow)))
+        menu.addItem(menuItem(title: L10n.t("上一个 OCR 结果", "Previous OCR Result"), action: #selector(showPreviousOCR)))
+        menu.addItem(menuItem(title: L10n.t("下一个 OCR 结果", "Next OCR Result"), action: #selector(showNextOCR)))
         let newlineItem = menuItem(
             title: L10n.t("保留 OCR 文字换行", "Preserve OCR Line Breaks"),
             action: #selector(toggleOCRNewlines)
@@ -165,6 +167,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func showOCRWindow() {
         OCRResultWindowController.shared.showLast()
+    }
+
+    @objc private func showPreviousOCR() {
+        OCRResultWindowController.shared.showPreviousResult()
+    }
+
+    @objc private func showNextOCR() {
+        OCRResultWindowController.shared.showNextResult()
     }
 
     @objc private func toggleOCRAppend() {
@@ -359,6 +369,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if CommandLine.arguments.contains("--history-prev") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
                 self?.openHistoryScreenshot(offset: 1)
+            }
+        }
+
+        if CommandLine.arguments.contains("--ocr-queue-demo") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                OCRResultWindowController.shared.show(title: "OCR Demo", text: "FIRST RESULT")
+                OCRResultWindowController.shared.show(title: "OCR Demo", text: "SECOND RESULT")
+                OCRResultWindowController.shared.showPreviousResult()
             }
         }
 
