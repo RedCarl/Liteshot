@@ -58,7 +58,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         moreMenu.addItem(menuItem(title: L10n.t("活动窗口", "Active Window"), action: #selector(captureActiveWindow)))
         moreMenu.addItem(menuItem(title: L10n.t("上次区域", "Last Area"), action: #selector(captureLastArea)))
         moreMenu.addItem(menuItem(title: L10n.t("上次区域并保存", "Last Area and Save"), action: #selector(captureLastAreaAndSave)))
-        moreMenu.addItem(menuItem(title: L10n.t("延迟截图", "Delayed Capture"), action: #selector(captureDelayed)))
+        let delayItem = NSMenuItem(title: L10n.t("延迟截图", "Delayed Capture"), action: nil, keyEquivalent: "")
+        let delayMenu = NSMenu(title: L10n.t("延迟截图", "Delayed Capture"))
+        delayMenu.addItem(menuItem(title: L10n.t("3 秒", "3 seconds"), action: #selector(captureDelayed3)))
+        delayMenu.addItem(menuItem(title: L10n.t("5 秒", "5 seconds"), action: #selector(captureDelayed5)))
+        delayMenu.addItem(menuItem(title: L10n.t("10 秒", "10 seconds"), action: #selector(captureDelayed10)))
+        delayItem.submenu = delayMenu
+        moreMenu.addItem(delayItem)
         moreMenu.addItem(menuItem(title: L10n.t("跨屏区域截图", "Cross-Display Region"), action: #selector(captureCrossScreen)))
         moreItem.submenu = moreMenu
         menu.addItem(moreItem)
@@ -164,6 +170,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func captureDelayed() {
         CaptureCoordinator.shared.begin(.delayed)
+    }
+
+    @objc private func captureDelayed3() {
+        CaptureCoordinator.shared.beginDelayed(seconds: 3)
+    }
+
+    @objc private func captureDelayed5() {
+        CaptureCoordinator.shared.beginDelayed(seconds: 5)
+    }
+
+    @objc private func captureDelayed10() {
+        CaptureCoordinator.shared.beginDelayed(seconds: 10)
     }
 
     @objc private func captureScroll() {
@@ -302,6 +320,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         let value = String(argument.dropFirst("--capture=".count))
         let mode: CaptureMode?
+        var delayOverride: Int?
         switch value {
         case "region": mode = .region
         case "window": mode = .window
@@ -309,6 +328,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case "active": mode = .activeWindow
         case "last": mode = .lastArea
         case "delayed": mode = .delayed
+        case "delayed3": mode = .delayed; delayOverride = 3
+        case "delayed5": mode = .delayed; delayOverride = 5
+        case "delayed10": mode = .delayed; delayOverride = 10
         case "adaptive": mode = .adaptive
         case "copy": mode = .adaptiveCopy
         case "ocrsilent": mode = .ocrSilent
@@ -323,7 +345,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         guard let mode else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            CaptureCoordinator.shared.begin(mode)
+            CaptureCoordinator.shared.begin(mode, delayOverride: delayOverride)
         }
         #endif
     }

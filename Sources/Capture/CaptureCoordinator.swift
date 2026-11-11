@@ -53,7 +53,11 @@ final class CaptureCoordinator {
         begin(.region)
     }
 
-    func begin(_ mode: CaptureMode) {
+    func beginDelayed(seconds: Int) {
+        begin(.delayed, delayOverride: seconds)
+    }
+
+    func begin(_ mode: CaptureMode, delayOverride: Int? = nil) {
         guard !isCapturing, overlayWindow == nil, countdownWindow == nil,
               scrollSession == nil, crossScreenController == nil else { return }
 
@@ -62,12 +66,14 @@ final class CaptureCoordinator {
                 self.showPermissionGuide()
                 return
             }
-            self.beginAfterPermission(mode)
+            self.beginAfterPermission(mode, delayOverride: delayOverride)
         }
     }
 
-    private func beginAfterPermission(_ mode: CaptureMode) {
-        let delay = mode == .delayed ? max(1, AppSettings.shared.delaySeconds) : 0
+    private func beginAfterPermission(_ mode: CaptureMode, delayOverride: Int?) {
+        let delay = mode == .delayed
+            ? max(1, delayOverride ?? AppSettings.shared.delaySeconds)
+            : 0
         if delay > 0 {
             runCountdown(seconds: delay) { [weak self] in
                 guard let self else { return }
