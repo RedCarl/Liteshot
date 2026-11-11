@@ -423,7 +423,7 @@ final class SelectionOverlayView: NSView {
 
         var x = padding
         for (index, item) in items.enumerated() {
-            let button = NSButton(title: "", target: self, action: #selector(actionTapped(_:)))
+            let button = ToolbarIconButton(title: "", target: self, action: #selector(actionTapped(_:)))
             button.tag = item.action.rawValue
             button.isBordered = false
             let configuration = NSImage.SymbolConfiguration(pointSize: 15, weight: .medium)
@@ -436,9 +436,9 @@ final class SelectionOverlayView: NSView {
             button.contentTintColor = .white
             button.wantsLayer = true
             button.layer?.cornerRadius = 4
-            if item.action == .annotate {
-                button.layer?.backgroundColor = NSColor.controlAccentColor.cgColor
-            }
+            button.baseBackground = item.action == .annotate
+                ? NSColor.controlAccentColor
+                : .clear
             button.toolTip = "\(item.title) (\(index + 1))"
             button.frame = CGRect(x: x, y: padding, width: buttonWidth, height: buttonHeight)
             bar.addSubview(button)
@@ -952,5 +952,37 @@ final class SelectionOverlayView: NSView {
         )
         let boundsInPixels = CGRect(x: 0, y: 0, width: image.width, height: image.height)
         return raw.integral.intersection(boundsInPixels)
+    }
+}
+
+
+final class ToolbarIconButton: NSButton {
+    var baseBackground: NSColor = .clear {
+        didSet { layer?.backgroundColor = baseBackground.cgColor }
+    }
+
+    private var hovered = false
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(
+            NSTrackingArea(
+                rect: bounds,
+                options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+                owner: self,
+                userInfo: nil
+            )
+        )
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        hovered = true
+        layer?.backgroundColor = NSColor.white.withAlphaComponent(0.16).cgColor
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        hovered = false
+        layer?.backgroundColor = baseBackground.cgColor
     }
 }
