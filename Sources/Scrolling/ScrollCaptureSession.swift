@@ -32,6 +32,7 @@ final class ScrollCaptureSession: NSObject {
     private var hudWindow: NSPanel?
     private var borderWindow: NSWindow?
     private var statusLabel: NSTextField?
+    private var thumbnailView: NSImageView?
     private var captureTask: Task<Void, Never>?
     private var isFinishing = false
 
@@ -57,6 +58,7 @@ final class ScrollCaptureSession: NSObject {
 
         stitcher.onUpdate = { [weak self] height in
             self?.updateStatus(height)
+            self?.updateThumbnail()
         }
         stitcher.onWarning = { [weak self] message in
             self?.statusLabel?.stringValue = message
@@ -107,7 +109,7 @@ final class ScrollCaptureSession: NSObject {
 
     private func showHUD() {
         let panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 320, height: 56),
+            contentRect: NSRect(x: 0, y: 0, width: 420, height: 68),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -122,6 +124,15 @@ final class ScrollCaptureSession: NSObject {
         content.wantsLayer = true
         content.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.84).cgColor
         content.layer?.cornerRadius = 12
+
+        let thumbnail = NSImageView()
+        thumbnail.imageScaling = .scaleProportionallyUpOrDown
+        thumbnail.wantsLayer = true
+        thumbnail.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.08).cgColor
+        thumbnail.layer?.cornerRadius = 6
+        thumbnail.translatesAutoresizingMaskIntoConstraints = false
+        content.addSubview(thumbnail)
+        thumbnailView = thumbnail
 
         let label = NSTextField(labelWithString: {
             switch strategy {
@@ -160,24 +171,34 @@ final class ScrollCaptureSession: NSObject {
         content.addSubview(stack)
 
         NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 14),
+            thumbnail.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 6),
+            thumbnail.centerYAnchor.constraint(equalTo: content.centerYAnchor),
+            thumbnail.widthAnchor.constraint(equalToConstant: 88),
+            thumbnail.heightAnchor.constraint(equalToConstant: 54),
+
+            stack.leadingAnchor.constraint(equalTo: thumbnail.trailingAnchor, constant: 10),
             stack.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -12),
             stack.centerYAnchor.constraint(equalTo: content.centerYAnchor),
-            label.widthAnchor.constraint(greaterThanOrEqualToConstant: 150),
+            label.widthAnchor.constraint(greaterThanOrEqualToConstant: 130),
         ])
 
         panel.contentView = content
         panel.setFrame(
             NSRect(
-                x: screen.frame.midX - 160,
+                x: screen.frame.midX - 210,
                 y: screen.frame.minY + 80,
-                width: 320,
-                height: 56
+                width: 420,
+                height: 68
             ),
             display: true
         )
         panel.orderFrontRegardless()
         hudWindow = panel
+    }
+
+    private func updateThumbnail() {
+        guard let thumbnailView, let image = stitcher.makeImage() else { return }
+        thumbnailView.image = NSImage(cgImage: image, size: NSSize(width: 88, height: 54))
     }
 
     private func showBorder() {
