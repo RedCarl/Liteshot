@@ -36,6 +36,20 @@ struct HotkeyShortcut: Codable, Equatable {
         return modifiers
     }
 
+    var menuKeyEquivalent: String {
+        let name = Self.keyName(for: keyCode)
+        return name.count == 1 ? name.lowercased() : ""
+    }
+
+    var menuModifiers: NSEvent.ModifierFlags {
+        var flags: NSEvent.ModifierFlags = []
+        if modifiers & UInt32(controlKey) != 0 { flags.insert(.control) }
+        if modifiers & UInt32(optionKey) != 0 { flags.insert(.option) }
+        if modifiers & UInt32(shiftKey) != 0 { flags.insert(.shift) }
+        if modifiers & UInt32(cmdKey) != 0 { flags.insert(.command) }
+        return flags
+    }
+
     static func keyName(for keyCode: UInt32) -> String {
         let names: [UInt32: String] = [
             0: "A", 1: "S", 2: "D", 3: "F", 4: "H", 5: "G", 6: "Z", 7: "X", 8: "C", 9: "V",

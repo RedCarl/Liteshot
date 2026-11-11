@@ -38,16 +38,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let button = item.button {
             button.image = NSImage(systemSymbolName: "camera.viewfinder", accessibilityDescription: "Liteshot")
             button.image?.isTemplate = true
-            button.toolTip = L10n.t("Liteshot · 开始截图 ⌃⌘A", "Liteshot · Start Capture ⌃⌘A")
+            let shortcut = AppSettings.shared.regionShortcut.displayString
+            button.toolTip = L10n.t("Liteshot · 开始截图 ", "Liteshot · Start Capture ") + shortcut
         }
 
         let menu = NSMenu()
 
+        let captureShortcut = AppSettings.shared.regionShortcut
         menu.addItem(menuItem(
             title: L10n.t("开始截图", "Start Capture"),
             action: #selector(captureAdaptive),
-            key: "a",
-            modifiers: [.control, .command]
+            key: captureShortcut.menuKeyEquivalent,
+            modifiers: captureShortcut.menuModifiers
         ))
         menu.addItem(menuItem(title: L10n.t("截图复制", "Capture and Copy"), action: #selector(captureCopy)))
 
@@ -128,9 +130,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func setUpHotKeys() {
         let center = HotKeyCenter.shared
-        center.setHandler(id: 1) { CaptureCoordinator.shared.begin(.region) }
-        center.setHandler(id: 2) { CaptureCoordinator.shared.begin(.fullScreen) }
-        center.setHandler(id: 3) { CaptureCoordinator.shared.begin(.window) }
+        center.setHandler(id: 1) { CaptureCoordinator.shared.begin(.adaptive) }
         refreshHotKeys()
     }
 
