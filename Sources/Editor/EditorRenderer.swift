@@ -5,6 +5,8 @@ struct ExportOptions {
     var scale: CGFloat = 1
     var cornerRadius: CGFloat = 0
     var shadow: Bool = false
+    var shadowBlur: CGFloat = 18
+    var shadowOpacity: Double = 0.45
     var transparent: Bool = false
 }
 
@@ -22,7 +24,7 @@ enum EditorRenderer {
         guard width > 0, height > 0 else { return nil }
 
         let scale = max(0.1, options.scale)
-        let padding = options.shadow ? 24.0 : 0.0
+        let padding = options.shadow ? max(24, options.shadowBlur + 8) : 0
         let outputWidth = max(1, Int((CGFloat(width) * scale + padding * 2).rounded()))
         let outputHeight = max(1, Int((CGFloat(height) * scale + padding * 2).rounded()))
 
@@ -59,9 +61,9 @@ enum EditorRenderer {
         if options.shadow {
             NSGraphicsContext.saveGraphicsState()
             let shadow = NSShadow()
-            shadow.shadowColor = NSColor.black.withAlphaComponent(0.45)
-            shadow.shadowBlurRadius = 18
-            shadow.shadowOffset = NSSize(width: 0, height: 6)
+            shadow.shadowColor = NSColor.black.withAlphaComponent(options.shadowOpacity)
+            shadow.shadowBlurRadius = options.shadowBlur
+            shadow.shadowOffset = NSSize(width: 0, height: options.shadowBlur / 3)
             shadow.set()
             NSColor.black.setFill()
             clippedPath.fill()

@@ -227,6 +227,8 @@ final class CaptureCoordinator {
             scale: settings.exportScale1x ? 0.5 : 1,
             cornerRadius: CGFloat(settings.exportCornerRadius),
             shadow: settings.exportShadow,
+            shadowBlur: CGFloat(settings.exportShadowBlur),
+            shadowOpacity: settings.exportShadowOpacity,
             transparent: settings.exportTransparent
         )
         let output = EditorRenderer.render(image: image, annotations: [], options: options) ?? image
@@ -820,6 +822,8 @@ final class CaptureCoordinator {
             scale: settings.exportScale1x ? 0.5 : 1,
             cornerRadius: CGFloat(settings.exportCornerRadius),
             shadow: settings.exportShadow,
+            shadowBlur: CGFloat(settings.exportShadowBlur),
+            shadowOpacity: settings.exportShadowOpacity,
             transparent: settings.exportTransparent
         )
         let output = EditorRenderer.render(image: image, annotations: [], options: exportOptions) ?? image

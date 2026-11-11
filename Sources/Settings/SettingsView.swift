@@ -81,6 +81,22 @@ struct SettingsView: View {
                             .frame(width: 48, alignment: .trailing)
                     }
                     Toggle(tr("阴影", "Shadow"), isOn: $settings.exportShadow)
+                    if settings.exportShadow {
+                        HStack(spacing: 10) {
+                            Text(tr("阴影大小", "Shadow Blur"))
+                            Slider(value: $settings.exportShadowBlur, in: 0...40, step: 2)
+                            Text("\(Int(settings.exportShadowBlur)) px")
+                                .monospacedDigit()
+                                .frame(width: 48, alignment: .trailing)
+                        }
+                        HStack(spacing: 10) {
+                            Text(tr("阴影不透明度", "Shadow Opacity"))
+                            Slider(value: $settings.exportShadowOpacity, in: 0.1...0.8, step: 0.05)
+                            Text("\(Int(settings.exportShadowOpacity * 100))%")
+                                .monospacedDigit()
+                                .frame(width: 48, alignment: .trailing)
+                        }
+                    }
                     Toggle(tr("透明背景", "Transparent Background"), isOn: $settings.exportTransparent)
                     Text(tr(
                         "应用到编辑器和直接保存/复制的截图。",

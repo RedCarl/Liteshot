@@ -496,6 +496,8 @@ final class EditorViewController: NSViewController {
             scale: settings.exportScale1x ? 0.5 : 1,
             cornerRadius: CGFloat(settings.exportCornerRadius),
             shadow: settings.exportShadow,
+            shadowBlur: CGFloat(settings.exportShadowBlur),
+            shadowOpacity: settings.exportShadowOpacity,
             transparent: settings.exportTransparent
         )
     }
