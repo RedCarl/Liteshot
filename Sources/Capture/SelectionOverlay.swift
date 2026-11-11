@@ -46,6 +46,9 @@ final class SelectionOverlayView: NSView {
     private var didDrag = false
     private var scrollStrategy: ScrollStrategy
     private var directionButtons: [NSButton] = []
+    private var aspectLocked = false
+    private var lockedAspect: CGFloat = 1
+    private var lockButton: NSButton?
 
     var onComplete: ((CGImage, CGRect) -> Void)?
     var onCancel: (() -> Void)?
@@ -87,6 +90,43 @@ final class SelectionOverlayView: NSView {
         if scrollMode {
             setupDirectionButtons()
         }
+        if allowsWindowPicking, !scrollMode {
+            setupLockButton()
+        }
+    }
+
+    private func setupLockButton() {
+        let button = NSButton(title: "", target: self, action: #selector(toggleAspectLock))
+        button.isBordered = false
+        button.wantsLayer = true
+        button.layer?.cornerRadius = 6
+        button.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.55).cgColor
+        button.contentTintColor = .white
+        button.toolTip = L10n.t("锁定比例 (R)", "Lock Aspect Ratio (R)")
+        addSubview(button)
+        lockButton = button
+        updateLockButton()
+    }
+
+    private func updateLockButton() {
+        let configuration = NSImage.SymbolConfiguration(pointSize: 14, weight: .medium)
+        lockButton?.image = NSImage(
+            systemSymbolName: aspectLocked ? "lock.fill" : "lock.open",
+            accessibilityDescription: L10n.t("锁定比例", "Lock Aspect Ratio")
+        )?.withSymbolConfiguration(configuration)
+    }
+
+    @objc private func toggleAspectLock() {
+        aspectLocked.toggle()
+        if aspectLocked {
+            if selection.width > 2, selection.height > 2 {
+                lockedAspect = selection.width / selection.height
+            } else {
+                lockedAspect = 1
+            }
+        }
+        updateLockButton()
+        needsDisplay = true
     }
 
     private func setupDirectionButtons() {
@@ -135,6 +175,9 @@ final class SelectionOverlayView: NSView {
 
     override func layout() {
         super.layout()
+        if let lockButton {
+            lockButton.frame = CGRect(x: bounds.width - 44, y: bounds.height - 88, width: 32, height: 32)
+        }
         guard scrollMode else { return }
         let width: CGFloat = 64
         let height: CGFloat = 24
@@ -662,6 +705,12 @@ final class SelectionOverlayView: NSView {
             let side = max(width, height)
             width = side
             height = side
+        } else if aspectLocked {
+            if width / max(height, 1) > lockedAspect {
+                height = width / lockedAspect
+            } else {
+                width = height * lockedAspect
+            }
         }
         let x = current.x >= start.x ? start.x : start.x - width
         let y = current.y >= start.y ? start.y : start.y - height
@@ -770,6 +819,10 @@ final class SelectionOverlayView: NSView {
             default: selection = selection.offsetBy(dx: 0, dy: -step)
             }
             needsDisplay = true
+        case 15: // R：锁定比例
+            if allowsWindowPicking, !scrollMode {
+                toggleAspectLock()
+            }
         case 3: // F：全屏
             if allowsWindowPicking {
                 let full = CGRect(x: 0, y: 0, width: image.width, height: image.height)
