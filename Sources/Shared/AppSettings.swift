@@ -73,6 +73,14 @@ final class AppSettings: ObservableObject {
         didSet { store.set(showMagnifier, forKey: Keys.showMagnifier) }
     }
 
+    @Published var maskOpacity: Double {
+        didSet { store.set(maskOpacity, forKey: Keys.maskOpacity) }
+    }
+
+    @Published var highlightColorHex: String {
+        didSet { store.set(highlightColorHex, forKey: Keys.highlightColorHex) }
+    }
+
     @Published var ocrPreserveNewlines: Bool {
         didSet { store.set(ocrPreserveNewlines, forKey: Keys.ocrPreserveNewlines) }
     }
@@ -132,6 +140,8 @@ final class AppSettings: ObservableObject {
         static let showMagnifier = "settings.showMagnifier"
         static let snapToEdges = "settings.snapToEdges"
         static let ocrPreserveNewlines = "settings.ocrPreserveNewlines"
+        static let maskOpacity = "settings.maskOpacity"
+        static let highlightColorHex = "settings.highlightColorHex"
         static let language = L10n.languageKey
         static let regionShortcut = "settings.shortcut.region"
         static let fullScreenShortcut = "settings.shortcut.fullscreen"
@@ -157,6 +167,8 @@ final class AppSettings: ObservableObject {
         showMagnifier = defaults.object(forKey: Keys.showMagnifier) as? Bool ?? true
         snapToEdges = defaults.object(forKey: Keys.snapToEdges) as? Bool ?? true
         ocrPreserveNewlines = defaults.object(forKey: Keys.ocrPreserveNewlines) as? Bool ?? true
+        maskOpacity = defaults.object(forKey: Keys.maskOpacity) as? Double ?? 0.45
+        highlightColorHex = defaults.string(forKey: Keys.highlightColorHex) ?? "#0A84FF"
         language = AppLanguage(rawValue: defaults.string(forKey: L10n.languageKey) ?? "") ?? .system
         regionShortcut = Self.loadShortcut(
             key: Keys.regionShortcut,

@@ -90,6 +90,24 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
                 }
 
+                Section(header: Text(tr("选区外观", "Selection Appearance"))) {
+                    HStack(spacing: 10) {
+                        Text(tr("遮罩透明度", "Mask Opacity"))
+                        Slider(value: $settings.maskOpacity, in: 0.1...0.8)
+                        Text("\(Int(settings.maskOpacity * 100))%")
+                            .monospacedDigit()
+                            .frame(width: 42, alignment: .trailing)
+                    }
+                    ColorPicker(tr("高亮颜色", "Highlight Color"), selection: Binding(
+                        get: {
+                            Color(nsColor: NSColor(hex: settings.highlightColorHex) ?? .controlAccentColor)
+                        },
+                        set: { newValue in
+                            settings.highlightColorHex = NSColor(newValue).hexString
+                        }
+                    ))
+                }
+
                 Section(header: Text(tr("快捷键", "Shortcuts"))) {
                     shortcutRow(tr("截图", "Capture"), shortcut: $settings.regionShortcut)
                     Text(tr(

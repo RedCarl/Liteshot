@@ -59,6 +59,10 @@ final class SelectionOverlayView: NSView {
     private var pendingPixelRect: CGRect?
     private var showsActionBar: Bool { allowsWindowPicking && !scrollMode && !skipActionBar }
 
+    private var highlightColor: NSColor {
+        NSColor(hex: AppSettings.shared.highlightColorHex) ?? .controlAccentColor
+    }
+
     init(
         frame: NSRect,
         image: CGImage,
@@ -114,7 +118,7 @@ final class SelectionOverlayView: NSView {
         }
         for (index, button) in directionButtons.enumerated() {
             button.layer?.backgroundColor = (index == selected
-                ? NSColor.controlAccentColor
+                ? highlightColor
                 : NSColor.black.withAlphaComponent(0.55)).cgColor
         }
     }
@@ -254,7 +258,7 @@ final class SelectionOverlayView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         displayImage.draw(in: bounds)
 
-        NSColor.black.withAlphaComponent(0.45).setFill()
+        NSColor.black.withAlphaComponent(AppSettings.shared.maskOpacity).setFill()
         bounds.fill()
 
         if selection.width == 0,
@@ -268,7 +272,7 @@ final class SelectionOverlayView: NSView {
             displayImage.draw(in: bounds)
             NSGraphicsContext.restoreGraphicsState()
 
-            NSColor.controlAccentColor.setStroke()
+            highlightColor.setStroke()
             let border = NSBezierPath(rect: hit.rect.insetBy(dx: 1, dy: 1))
             border.lineWidth = 2
             border.stroke()
@@ -277,7 +281,7 @@ final class SelectionOverlayView: NSView {
         }
 
         for (order, hit) in selectedWindows.enumerated() {
-            NSColor.controlAccentColor.setStroke()
+            highlightColor.setStroke()
             let border = NSBezierPath(rect: hit.rect.insetBy(dx: 2, dy: 2))
             border.lineWidth = 3
             border.stroke()
@@ -315,7 +319,7 @@ final class SelectionOverlayView: NSView {
             y: min(max(point.y - radius - 4, radius + 4), bounds.height - radius - 4)
         )
         let circle = CGRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2)
-        NSColor.controlAccentColor.setFill()
+        highlightColor.setFill()
         NSBezierPath(ovalIn: circle).fill()
         NSColor.white.setStroke()
         let outline = NSBezierPath(ovalIn: circle)
@@ -437,7 +441,7 @@ final class SelectionOverlayView: NSView {
             button.wantsLayer = true
             button.layer?.cornerRadius = 4
             button.baseBackground = item.action == .annotate
-                ? NSColor.controlAccentColor
+                ? highlightColor
                 : .clear
             button.toolTip = "\(item.title) (\(index + 1))"
             button.frame = CGRect(x: x, y: padding, width: buttonWidth, height: buttonHeight)
