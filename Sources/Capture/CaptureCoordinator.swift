@@ -414,6 +414,46 @@ final class CaptureCoordinator {
         }
         view.onScrollDirectionChanged = onScrollDirectionChanged
         view.onScrollRegionSelected = onScrollRegionSelected
+        if allowsWindowPicking, !scrollMode {
+            view.onAction = { [weak self] action, image, pixelRect in
+                guard let self else { return }
+                switch action {
+                case .annotate:
+                    self.dismissOverlay(hideApp: true)
+                    self.commit(image)
+                case .copy:
+                    self.dismissOverlay(hideApp: true)
+                    ClipboardService.copy(image: image)
+                    NSSound(named: "Glass")?.play()
+                case .save:
+                    self.dismissOverlay(hideApp: true)
+                    let settings = AppSettings.shared
+                    do {
+                        let url = try SaveService.save(
+                            image: image,
+                            to: settings.saveDirectory,
+                            format: settings.format,
+                            quality: settings.jpegQuality,
+                            template: settings.filenameTemplate
+                        )
+                        if settings.revealInFinder {
+                            NSWorkspace.shared.activateFileViewerSelecting([url])
+                        }
+                    } catch {
+                        self.showError(error)
+                    }
+                case .scroll:
+                    self.dismissOverlay(hideApp: false)
+                    self.beginScrollSession(on: screen, pixelRect: pixelRect, strategy: .vertical)
+                case .ocr:
+                    self.dismissOverlay(hideApp: false)
+                    self.runRecognition(on: image, mode: .ocr)
+                case .pin:
+                    self.dismissOverlay(hideApp: true)
+                    PinManager.shared.pin(image)
+                }
+            }
+        }
         view.onComplete = { [weak self] cropped, pixelRect in
             LastAreaStore.save(pixelRect, displayID: screen.displayID)
             if let onSelected {

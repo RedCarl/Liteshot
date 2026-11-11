@@ -1,5 +1,14 @@
 import AppKit
 
+enum SelectionAction: Int {
+    case annotate
+    case copy
+    case save
+    case scroll
+    case ocr
+    case pin
+}
+
 /// 覆盖全屏的截图选区窗口：置顶到屏幕保护程序层级，盖住普通窗口与全屏 App。
 final class OverlayWindow: NSWindow {
     override var canBecomeKey: Bool { true }
@@ -41,6 +50,12 @@ final class SelectionOverlayView: NSView {
     var onPickWindow: ((CapturableWindow) -> Void)?
     var onScrollDirectionChanged: ((ScrollStrategy) -> Void)?
     var onScrollRegionSelected: ((CGRect) -> Void)?
+    var onAction: ((SelectionAction, CGImage, CGRect) -> Void)?
+
+    private var actionBar: NSView?
+    private var pendingImage: CGImage?
+    private var pendingPixelRect: CGRect?
+    private var showsActionBar: Bool { allowsWindowPicking && !scrollMode }
 
     init(
         frame: NSRect,
@@ -297,6 +312,84 @@ final class SelectionOverlayView: NSView {
         (text as NSString).draw(at: CGPoint(x: origin.x + 6, y: origin.y), withAttributes: attributes)
     }
 
+    private func showActionBar(image: CGImage, pixelRect: CGRect, viewRect: CGRect) {
+        pendingImage = image
+        pendingPixelRect = pixelRect
+        actionBar?.removeFromSuperview()
+
+        let items: [(String, SelectionAction)] = [
+            (L10n.t("标注", "Annotate"), .annotate),
+            (L10n.t("复制", "Copy"), .copy),
+            (L10n.t("保存", "Save"), .save),
+            (L10n.t("滚动", "Scroll"), .scroll),
+            ("OCR", .ocr),
+            (L10n.t("钉图", "Pin"), .pin),
+        ]
+
+        let buttonWidth: CGFloat = 52
+        let buttonHeight: CGFloat = 26
+        let gap: CGFloat = 4
+        let padding: CGFloat = 6
+        let barWidth = padding * 2 + buttonWidth * CGFloat(items.count) + gap * CGFloat(items.count - 1)
+        let barHeight = buttonHeight + padding * 2
+
+        let bar = NSView(frame: .zero)
+        bar.wantsLayer = true
+        bar.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.82).cgColor
+        bar.layer?.cornerRadius = 8
+
+        var x = padding
+        for (title, action) in items {
+            let button = NSButton(title: title, target: self, action: #selector(actionTapped(_:)))
+            button.tag = action.rawValue
+            button.isBordered = false
+            button.font = .systemFont(ofSize: 12, weight: .medium)
+            button.contentTintColor = .white
+            button.wantsLayer = true
+            button.layer?.cornerRadius = 4
+            if action == .annotate {
+                button.layer?.backgroundColor = NSColor.controlAccentColor.cgColor
+            }
+            button.frame = CGRect(x: x, y: padding, width: buttonWidth, height: buttonHeight)
+            bar.addSubview(button)
+            x += buttonWidth + gap
+        }
+
+        let selection = viewRect
+
+        var originX = selection.midX - barWidth / 2
+        originX = min(max(originX, 8), bounds.width - barWidth - 8)
+        var originY = selection.minY - barHeight - 10
+        if originY < 8 {
+            originY = min(selection.maxY + 10, bounds.height - barHeight - 8)
+        }
+        bar.frame = CGRect(x: originX, y: originY, width: barWidth, height: barHeight)
+        addSubview(bar)
+        actionBar = bar
+        needsDisplay = true
+    }
+
+    private func hideActionBar() {
+        actionBar?.removeFromSuperview()
+        actionBar = nil
+        pendingImage = nil
+        pendingPixelRect = nil
+    }
+
+    @objc private func actionTapped(_ sender: NSButton) {
+        guard let action = SelectionAction(rawValue: sender.tag),
+              let image = pendingImage,
+              let pixelRect = pendingPixelRect else { return }
+        hideActionBar()
+        onAction?(action, image, pixelRect)
+    }
+
+    private func performPendingAction() {
+        guard let image = pendingImage, let pixelRect = pendingPixelRect else { return }
+        hideActionBar()
+        onAction?(.annotate, image, pixelRect)
+    }
+
     private func drawSnapGuides() {
         guard AppSettings.shared.snapToEdges else { return }
         NSColor.systemYellow.withAlphaComponent(0.9).setStroke()
@@ -387,6 +480,9 @@ final class SelectionOverlayView: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {
+        if actionBar != nil {
+            hideActionBar()
+        }
         let raw = convert(event.locationInWindow, from: nil)
         let x = snapped(raw.x, guides: snapGuidesX)
         let y = snapped(raw.y, guides: snapGuidesY)
@@ -446,6 +542,19 @@ final class SelectionOverlayView: NSView {
         }
 
         if allowsWindowPicking, !didDrag {
+            if showsActionBar {
+                if let index = hoveredWindowIndex, windowHits.indices.contains(index) {
+                    let viewRect = windowHits[index].rect
+                    let rect = pixelRect(for: viewRect)
+                    if let cropped = image.cropping(to: rect) {
+                        showActionBar(image: cropped, pixelRect: rect, viewRect: viewRect)
+                    }
+                } else {
+                    let full = CGRect(x: 0, y: 0, width: image.width, height: image.height)
+                    showActionBar(image: image, pixelRect: full, viewRect: bounds)
+                }
+                return
+            }
             if let index = hoveredWindowIndex, windowHits.indices.contains(index) {
                 onPickWindow?(windowHits[index].window)
             } else {
@@ -465,7 +574,11 @@ final class SelectionOverlayView: NSView {
             onCancel?()
             return
         }
-        onComplete?(cropped, pixels)
+        if showsActionBar {
+            showActionBar(image: cropped, pixelRect: pixels, viewRect: selection)
+        } else {
+            onComplete?(cropped, pixels)
+        }
     }
 
     override func rightMouseDown(with event: NSEvent) {
@@ -505,8 +618,17 @@ final class SelectionOverlayView: NSView {
                 onPickWindow?(windowHits[index].window)
             }
         case 53: // Esc
-            onCancel?()
+            if actionBar != nil {
+                hideActionBar()
+                needsDisplay = true
+            } else {
+                onCancel?()
+            }
         case 36, 76: // Return / Enter
+            if actionBar != nil {
+                performPendingAction()
+                return
+            }
             if selection.width >= 2, selection.height >= 2 {
                 let pixels = pixelRect(for: selection)
                 if let cropped = image.cropping(to: pixels) {
