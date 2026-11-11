@@ -41,6 +41,7 @@ final class SelectionOverlayView: NSView {
     private let scrollMode: Bool
     private var windowHits: [WindowHit] = []
     private var hoveredWindowIndex: Int?
+    private var selectedWindows: [WindowHit] = []
     private var didDrag = false
     private var scrollStrategy: ScrollStrategy
     private var directionButtons: [NSButton] = []
@@ -272,6 +273,17 @@ final class SelectionOverlayView: NSView {
             drawWindowTitle(for: hit)
         }
 
+        for (order, hit) in selectedWindows.enumerated() {
+            NSColor.controlAccentColor.setStroke()
+            let border = NSBezierPath(rect: hit.rect.insetBy(dx: 2, dy: 2))
+            border.lineWidth = 3
+            border.stroke()
+            drawWindowBadge(
+                number: order + 1,
+                at: CGPoint(x: hit.rect.minX, y: hit.rect.maxY)
+            )
+        }
+
         if selection.width > 0, selection.height > 0 {
             NSGraphicsContext.saveGraphicsState()
             NSBezierPath(rect: selection).addClip()
@@ -293,6 +305,32 @@ final class SelectionOverlayView: NSView {
         drawStatus()
     }
 
+    private func drawWindowBadge(number: Int, at point: CGPoint) {
+        let radius: CGFloat = 11
+        let center = CGPoint(
+            x: min(max(point.x + radius + 4, radius + 4), bounds.width - radius - 4),
+            y: min(max(point.y - radius - 4, radius + 4), bounds.height - radius - 4)
+        )
+        let circle = CGRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2)
+        NSColor.controlAccentColor.setFill()
+        NSBezierPath(ovalIn: circle).fill()
+        NSColor.white.setStroke()
+        let outline = NSBezierPath(ovalIn: circle)
+        outline.lineWidth = 1.5
+        outline.stroke()
+
+        let text = "\(number)"
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 12, weight: .bold),
+            .foregroundColor: NSColor.white,
+        ]
+        let size = (text as NSString).size(withAttributes: attributes)
+        (text as NSString).draw(
+            at: CGPoint(x: center.x - size.width / 2, y: center.y - size.height / 2),
+            withAttributes: attributes
+        )
+    }
+
     private func drawWindowTitle(for hit: WindowHit) {
         let text = hit.window.displayTitle
         let attributes: [NSAttributedString.Key: Any] = [
@@ -310,6 +348,48 @@ final class SelectionOverlayView: NSView {
         NSColor.black.withAlphaComponent(0.78).setFill()
         NSBezierPath(roundedRect: background, xRadius: 4, yRadius: 4).fill()
         (text as NSString).draw(at: CGPoint(x: origin.x + 6, y: origin.y), withAttributes: attributes)
+    }
+
+    private func compositeSelectedWindows() -> (image: CGImage, pixelRect: CGRect, viewRect: CGRect)? {
+        guard !selectedWindows.isEmpty else { return nil }
+        let union = selectedWindows.reduce(CGRect.null) { $0.union($1.rect) }
+        let pixels = pixelRect(for: union)
+        guard pixels.width >= 1, pixels.height >= 1 else { return nil }
+
+        guard let context = CGContext(
+            data: nil,
+            width: Int(pixels.width),
+            height: Int(pixels.height),
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+
+        context.interpolationQuality = .high
+        context.translateBy(x: 0, y: CGFloat(pixels.height))
+        context.scaleBy(x: 1, y: -1)
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: true)
+
+        let scaleX = CGFloat(image.width) / bounds.width
+        let scaleY = CGFloat(image.height) / bounds.height
+        for hit in selectedWindows {
+            let windowPixels = pixelRect(for: hit.rect)
+            guard let cropped = image.cropping(to: windowPixels) else { continue }
+            let destination = CGRect(
+                x: (hit.rect.minX - union.minX) * scaleX,
+                y: (union.maxY - hit.rect.maxY) * scaleY,
+                width: hit.rect.width * scaleX,
+                height: hit.rect.height * scaleY
+            )
+            NSImage(cgImage: cropped, size: NSSize(width: cropped.width, height: cropped.height))
+                .draw(in: destination)
+        }
+        NSGraphicsContext.restoreGraphicsState()
+
+        guard let composed = context.makeImage() else { return nil }
+        return (composed, pixels, union)
     }
 
     private func showActionBar(image: CGImage, pixelRect: CGRect, viewRect: CGRect) {
@@ -419,10 +499,17 @@ final class SelectionOverlayView: NSView {
                 "Drag a region or click a window · Choose a scroll direction · Esc cancels"
             )
         } else if allowsWindowPicking {
-            text = L10n.t(
-                "移动高亮窗口 · 点击截窗口 · 拖拽截区域 · 点空白截全屏 · F 全屏 · Esc 取消",
-                "Hover to highlight a window · Click to capture it · Drag to select · Click desktop for full screen · F for full screen · Esc cancels"
-            )
+            if selectedWindows.isEmpty {
+                text = L10n.t(
+                    "移动高亮窗口 · 点击截窗口 · Shift 多选 · 拖拽截区域 · 点空白截全屏 · Esc 取消",
+                    "Hover a window · Click to capture · Shift to multi-select · Drag a region · Click desktop for full screen · Esc cancels"
+                )
+            } else {
+                text = L10n.t("已选 ", "Selected ") + "\(selectedWindows.count) " + L10n.t(
+                    "个窗口 · Enter 完成 · Shift 继续加选 · Esc 取消",
+                    "windows · Enter to finish · Shift to add · Esc cancels"
+                )
+            }
         } else {
             text = L10n.t("拖拽选择区域 · C 复制色值 · Esc / 右键取消", "Drag to select · C copies color · Esc / right-click cancels")
         }
@@ -484,6 +571,26 @@ final class SelectionOverlayView: NSView {
             hideActionBar()
         }
         let raw = convert(event.locationInWindow, from: nil)
+        if allowsWindowPicking, !scrollMode,
+           event.modifierFlags.contains(.shift),
+           let index = topmostWindowIndex(at: raw),
+           windowHits.indices.contains(index) {
+            let hit = windowHits[index]
+            if let position = selectedWindows.firstIndex(where: { $0.window.id == hit.window.id }) {
+                selectedWindows.remove(at: position)
+            } else {
+                selectedWindows.append(hit)
+            }
+            dragStart = nil
+            selection = .zero
+            needsDisplay = true
+            return
+        }
+
+        if !selectedWindows.isEmpty {
+            selectedWindows.removeAll()
+        }
+
         let x = snapped(raw.x, guides: snapGuidesX)
         let y = snapped(raw.y, guides: snapGuidesY)
         activeSnapX = x.guide
@@ -621,12 +728,25 @@ final class SelectionOverlayView: NSView {
             if actionBar != nil {
                 hideActionBar()
                 needsDisplay = true
+            } else if !selectedWindows.isEmpty {
+                selectedWindows.removeAll()
+                needsDisplay = true
             } else {
                 onCancel?()
             }
         case 36, 76: // Return / Enter
             if actionBar != nil {
                 performPendingAction()
+                return
+            }
+            if !selectedWindows.isEmpty {
+                if let composed = compositeSelectedWindows() {
+                    showActionBar(
+                        image: composed.image,
+                        pixelRect: composed.pixelRect,
+                        viewRect: composed.viewRect
+                    )
+                }
                 return
             }
             if selection.width >= 2, selection.height >= 2 {
