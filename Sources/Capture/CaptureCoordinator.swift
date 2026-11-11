@@ -12,6 +12,7 @@ enum CaptureMode {
     case panorama
     case adaptive
     case adaptiveCopy
+    case lastAreaSave
     case ocrSilent
     case crossScreen
     case ocr
@@ -100,6 +101,8 @@ final class CaptureCoordinator {
                     try await startAdaptiveCapture()
                 case .adaptiveCopy:
                     try await startAdaptiveCopyCapture()
+                case .lastAreaSave:
+                    try await startLastAreaSave()
                 case .window:
                     try await startWindowCapture()
                 case .fullScreen:
@@ -168,6 +171,76 @@ final class CaptureCoordinator {
             return
         }
         commit(cropped)
+    }
+
+    private func startLastAreaSave() async throws {
+        guard let screen = screenUnderMouse() else { throw CaptureError.noScreen }
+        let image = try await ScreenCaptureService.capture(
+            displayID: screen.displayID,
+            pixelWidth: Int(screen.pixelSize.width),
+            pixelHeight: Int(screen.pixelSize.height),
+            showsCursor: AppSettings.shared.includeCursor
+        )
+
+        guard let saved = LastAreaStore.load(displayID: screen.displayID) else {
+            presentRegionOverlay(
+                on: screen,
+                image: image,
+                allowsWindowPicking: true,
+                skipActionBar: true,
+                onSelected: { [weak self] cropped, _ in
+                    self?.saveDirectly(cropped)
+                }
+            )
+            return
+        }
+
+        let imageBounds = CGRect(x: 0, y: 0, width: image.width, height: image.height)
+        let rect = saved.intersection(imageBounds).integral
+        guard rect.width >= 1, rect.height >= 1, let cropped = image.cropping(to: rect) else {
+            presentRegionOverlay(
+                on: screen,
+                image: image,
+                allowsWindowPicking: true,
+                skipActionBar: true,
+                onSelected: { [weak self] cropped, _ in
+                    self?.saveDirectly(cropped)
+                }
+            )
+            return
+        }
+        saveDirectly(cropped)
+    }
+
+    private func saveDirectly(_ image: CGImage) {
+        let settings = AppSettings.shared
+        let options = ExportOptions(
+            scale: settings.exportScale1x ? 0.5 : 1,
+            cornerRadius: CGFloat(settings.exportCornerRadius),
+            shadow: settings.exportShadow,
+            transparent: settings.exportTransparent
+        )
+        let output = EditorRenderer.render(image: image, annotations: [], options: options) ?? image
+
+        if settings.copyToClipboard {
+            ClipboardService.copy(image: output)
+        }
+
+        do {
+            let url = try SaveService.save(
+                image: output,
+                to: settings.saveDirectory,
+                format: settings.format,
+                quality: settings.jpegQuality,
+                template: settings.filenameTemplate
+            )
+            if settings.revealInFinder {
+                NSWorkspace.shared.activateFileViewerSelecting([url])
+            }
+            NSSound(named: "Glass")?.play()
+        } catch {
+            showError(error)
+        }
     }
 
     private func startWindowCapture() async throws {
