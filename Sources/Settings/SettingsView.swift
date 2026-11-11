@@ -126,7 +126,7 @@ struct SettingsView: View {
                 }
 
                 Section(header: Text(tr("快捷键", "Shortcuts"))) {
-                    shortcutRow(tr("截图", "Capture"), shortcut: $settings.regionShortcut)
+                    shortcutRow(tr("开始截图", "Start Capture"), shortcut: $settings.regionShortcut)
                     Text(tr(
                         "点击后按下新的组合键，至少包含一个修饰键；Esc 取消录制。",
                         "Click, then press a new shortcut with at least one modifier. Esc cancels."

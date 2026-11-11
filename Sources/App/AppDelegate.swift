@@ -38,28 +38,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let button = item.button {
             button.image = NSImage(systemSymbolName: "camera.viewfinder", accessibilityDescription: "Liteshot")
             button.image?.isTemplate = true
-            button.toolTip = L10n.t("Liteshot · 截图 ⌃⌘A", "Liteshot · Capture ⌃⌘A")
+            button.toolTip = L10n.t("Liteshot · 开始截图 ⌃⌘A", "Liteshot · Start Capture ⌃⌘A")
         }
 
         let menu = NSMenu()
 
         menu.addItem(menuItem(
-            title: L10n.t("截图", "Capture"),
+            title: L10n.t("开始截图", "Start Capture"),
             action: #selector(captureAdaptive),
             key: "a",
             modifiers: [.control, .command]
         ))
-        menu.addItem(menuItem(title: L10n.t("截图并复制", "Capture and Copy"), action: #selector(captureCopy)))
+        menu.addItem(menuItem(title: L10n.t("截图复制", "Capture and Copy"), action: #selector(captureCopy)))
 
         menu.addItem(menuItem(title: L10n.t("滚动截图", "Scrolling Capture"), action: #selector(captureScroll)))
 
         let moreItem = NSMenuItem(title: L10n.t("更多截图", "More Capture Modes"), action: nil, keyEquivalent: "")
         let moreMenu = NSMenu(title: L10n.t("更多截图", "More Capture Modes"))
         moreMenu.addItem(menuItem(title: L10n.t("全屏截图", "Full Screen"), action: #selector(captureFullScreen)))
-        moreMenu.addItem(menuItem(title: L10n.t("活动窗口", "Active Window"), action: #selector(captureActiveWindow)))
-        moreMenu.addItem(menuItem(title: L10n.t("上次区域", "Last Area"), action: #selector(captureLastArea)))
-        moreMenu.addItem(menuItem(title: L10n.t("上次区域并保存", "Last Area and Save"), action: #selector(captureLastAreaAndSave)))
-        moreMenu.addItem(menuItem(title: L10n.t("上次区域并复制", "Last Area and Copy"), action: #selector(captureLastAreaAndCopy)))
+        moreMenu.addItem(menuItem(title: L10n.t("截取活动窗口", "Capture Active Window"), action: #selector(captureActiveWindow)))
+        moreMenu.addItem(menuItem(title: L10n.t("截取上一次区域", "Capture Last Area"), action: #selector(captureLastArea)))
+        moreMenu.addItem(menuItem(title: L10n.t("截取上一次区域并保存", "Capture Last Area and Save"), action: #selector(captureLastAreaAndSave)))
+        moreMenu.addItem(menuItem(title: L10n.t("截取上一次区域并复制", "Capture Last Area and Copy"), action: #selector(captureLastAreaAndCopy)))
         let delayItem = NSMenuItem(title: L10n.t("延迟截图", "Delayed Capture"), action: nil, keyEquivalent: "")
         let delayMenu = NSMenu(title: L10n.t("延迟截图", "Delayed Capture"))
         delayMenu.addItem(menuItem(title: L10n.t("3 秒", "3 seconds"), action: #selector(captureDelayed3)))
