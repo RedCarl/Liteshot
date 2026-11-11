@@ -13,6 +13,7 @@ enum CaptureMode {
     case adaptive
     case adaptiveCopy
     case lastAreaSave
+    case lastAreaCopy
     case ocrSilent
     case crossScreen
     case ocr
@@ -109,6 +110,8 @@ final class CaptureCoordinator {
                     try await startAdaptiveCopyCapture()
                 case .lastAreaSave:
                     try await startLastAreaSave()
+                case .lastAreaCopy:
+                    try await startLastAreaCopy()
                 case .window:
                     try await startWindowCapture()
                 case .fullScreen:
@@ -246,6 +249,48 @@ final class CaptureCoordinator {
             NSSound(named: "Glass")?.play()
         } catch {
             showError(error)
+        }
+    }
+
+    private func startLastAreaCopy() async throws {
+        guard let screen = screenUnderMouse() else { throw CaptureError.noScreen }
+        let image = try await ScreenCaptureService.capture(
+            displayID: screen.displayID,
+            pixelWidth: Int(screen.pixelSize.width),
+            pixelHeight: Int(screen.pixelSize.height),
+            showsCursor: AppSettings.shared.includeCursor
+        )
+
+        guard let saved = LastAreaStore.load(displayID: screen.displayID) else {
+            presentRegionOverlay(
+                on: screen,
+                image: image,
+                allowsWindowPicking: true,
+                skipActionBar: true,
+                onSelected: { cropped, _ in
+                    ClipboardService.copy(image: cropped)
+                    NSSound(named: "Glass")?.play()
+                }
+            )
+            return
+        }
+
+        let imageBounds = CGRect(x: 0, y: 0, width: image.width, height: image.height)
+        let rect = saved.intersection(imageBounds).integral
+        if rect.width >= 1, rect.height >= 1, let cropped = image.cropping(to: rect) {
+            ClipboardService.copy(image: cropped)
+            NSSound(named: "Glass")?.play()
+        } else {
+            presentRegionOverlay(
+                on: screen,
+                image: image,
+                allowsWindowPicking: true,
+                skipActionBar: true,
+                onSelected: { cropped, _ in
+                    ClipboardService.copy(image: cropped)
+                    NSSound(named: "Glass")?.play()
+                }
+            )
         }
     }
 

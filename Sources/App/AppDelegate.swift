@@ -59,6 +59,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         moreMenu.addItem(menuItem(title: L10n.t("活动窗口", "Active Window"), action: #selector(captureActiveWindow)))
         moreMenu.addItem(menuItem(title: L10n.t("上次区域", "Last Area"), action: #selector(captureLastArea)))
         moreMenu.addItem(menuItem(title: L10n.t("上次区域并保存", "Last Area and Save"), action: #selector(captureLastAreaAndSave)))
+        moreMenu.addItem(menuItem(title: L10n.t("上次区域并复制", "Last Area and Copy"), action: #selector(captureLastAreaAndCopy)))
         let delayItem = NSMenuItem(title: L10n.t("延迟截图", "Delayed Capture"), action: nil, keyEquivalent: "")
         let delayMenu = NSMenu(title: L10n.t("延迟截图", "Delayed Capture"))
         delayMenu.addItem(menuItem(title: L10n.t("3 秒", "3 seconds"), action: #selector(captureDelayed3)))
@@ -219,6 +220,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func captureLastAreaAndSave() {
         CaptureCoordinator.shared.begin(.lastAreaSave)
+    }
+
+    @objc private func captureLastAreaAndCopy() {
+        CaptureCoordinator.shared.begin(.lastAreaCopy)
     }
 
     @objc private func captureDelayed() {
@@ -400,6 +405,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case "copy": mode = .adaptiveCopy
         case "ocrsilent": mode = .ocrSilent
         case "lastsave": mode = .lastAreaSave
+        case "lastcopy": mode = .lastAreaCopy
         case "scroll": mode = .scroll
         case "scrollh": mode = .scrollHorizontal
         case "panorama": mode = .panorama
