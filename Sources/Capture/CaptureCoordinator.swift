@@ -41,6 +41,7 @@ final class CaptureCoordinator {
     private var countdownWindow: NSWindow?
     private var scrollSession: ScrollCaptureSession?
     private var crossScreenController: CrossScreenCaptureController?
+    private var pendingScrollStrategy: ScrollStrategy = .vertical
     private var isCapturing = false
 
     private init() {}
@@ -206,9 +207,26 @@ final class CaptureCoordinator {
 
     private func startScrollCapture(strategy: ScrollStrategy) async throws {
         let (screen, image) = try await captureCurrentScreen()
-        presentRegionOverlay(on: screen, image: image) { [weak self] _, pixelRect in
-            self?.beginScrollSession(on: screen, pixelRect: pixelRect, strategy: strategy)
-        }
+        pendingScrollStrategy = strategy
+        presentRegionOverlay(
+            on: screen,
+            image: image,
+            allowsWindowPicking: true,
+            scrollMode: true,
+            initialScrollStrategy: strategy,
+            onScrollDirectionChanged: { [weak self] strategy in
+                self?.pendingScrollStrategy = strategy
+            },
+            onScrollRegionSelected: { [weak self] pixelRect in
+                guard let self else { return }
+                self.dismissOverlay(hideApp: false)
+                self.beginScrollSession(
+                    on: screen,
+                    pixelRect: pixelRect,
+                    strategy: self.pendingScrollStrategy
+                )
+            }
+        )
     }
 
     private func startCrossScreenCapture() async throws {
@@ -321,9 +339,9 @@ final class CaptureCoordinator {
 
     private func startRecognitionCapture(mode: CaptureMode) async throws {
         let (screen, image) = try await captureCurrentScreen()
-        presentRegionOverlay(on: screen, image: image) { [weak self] cropped, _ in
+        presentRegionOverlay(on: screen, image: image, onSelected: { [weak self] cropped, _ in
             self?.runRecognition(on: cropped, mode: mode)
-        }
+        })
     }
 
     private func runRecognition(on image: CGImage, mode: CaptureMode) {
@@ -374,6 +392,10 @@ final class CaptureCoordinator {
         on screen: NSScreen,
         image: CGImage,
         allowsWindowPicking: Bool = false,
+        scrollMode: Bool = false,
+        initialScrollStrategy: ScrollStrategy = .vertical,
+        onScrollDirectionChanged: ((ScrollStrategy) -> Void)? = nil,
+        onScrollRegionSelected: ((CGRect) -> Void)? = nil,
         onSelected: ((CGImage, CGRect) -> Void)? = nil
     ) {
         let window = makeOverlayWindow(on: screen)
@@ -381,13 +403,17 @@ final class CaptureCoordinator {
             frame: NSRect(origin: .zero, size: screen.frame.size),
             image: image,
             displayID: screen.displayID,
-            allowsWindowPicking: allowsWindowPicking
+            allowsWindowPicking: allowsWindowPicking,
+            scrollMode: scrollMode,
+            initialScrollStrategy: initialScrollStrategy
         )
-        if allowsWindowPicking {
+        if allowsWindowPicking, !scrollMode {
             view.onPickWindow = { [weak self] window in
                 self?.handleWindowPick([window], on: screen)
             }
         }
+        view.onScrollDirectionChanged = onScrollDirectionChanged
+        view.onScrollRegionSelected = onScrollRegionSelected
         view.onComplete = { [weak self] cropped, pixelRect in
             LastAreaStore.save(pixelRect, displayID: screen.displayID)
             if let onSelected {

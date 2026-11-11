@@ -29,28 +29,99 @@ final class SelectionOverlayView: NSView {
     }
 
     private let allowsWindowPicking: Bool
+    private let scrollMode: Bool
     private var windowHits: [WindowHit] = []
     private var hoveredWindowIndex: Int?
     private var didDrag = false
+    private var scrollStrategy: ScrollStrategy
+    private var directionButtons: [NSButton] = []
 
     var onComplete: ((CGImage, CGRect) -> Void)?
     var onCancel: (() -> Void)?
     var onPickWindow: ((CapturableWindow) -> Void)?
+    var onScrollDirectionChanged: ((ScrollStrategy) -> Void)?
+    var onScrollRegionSelected: ((CGRect) -> Void)?
 
     init(
         frame: NSRect,
         image: CGImage,
         displayID: CGDirectDisplayID,
-        allowsWindowPicking: Bool = false
+        allowsWindowPicking: Bool = false,
+        scrollMode: Bool = false,
+        initialScrollStrategy: ScrollStrategy = .vertical
     ) {
         self.image = image
         self.displayImage = NSImage(cgImage: image, size: frame.size)
         self.allowsWindowPicking = allowsWindowPicking
+        self.scrollMode = scrollMode
+        self.scrollStrategy = initialScrollStrategy
         super.init(frame: frame)
         wantsLayer = true
         loadSnapGuides(displayID: displayID)
         if allowsWindowPicking {
             loadWindowHits(displayID: displayID)
+        }
+        if scrollMode {
+            setupDirectionButtons()
+        }
+    }
+
+    private func setupDirectionButtons() {
+        let titles = [
+            L10n.t("竖向", "Vertical"),
+            L10n.t("横向", "Horizontal"),
+            L10n.t("全景", "Panorama"),
+        ]
+        for (index, title) in titles.enumerated() {
+            let button = NSButton(title: title, target: self, action: #selector(directionTapped(_:)))
+            button.tag = index
+            button.isBordered = false
+            button.wantsLayer = true
+            button.layer?.cornerRadius = 5
+            button.font = .systemFont(ofSize: 12, weight: .medium)
+            button.contentTintColor = .white
+            addSubview(button)
+            directionButtons.append(button)
+        }
+        updateDirectionButtons()
+    }
+
+    private func updateDirectionButtons() {
+        let selected: Int
+        switch scrollStrategy {
+        case .vertical: selected = 0
+        case .horizontal: selected = 1
+        case .panorama: selected = 2
+        }
+        for (index, button) in directionButtons.enumerated() {
+            button.layer?.backgroundColor = (index == selected
+                ? NSColor.controlAccentColor
+                : NSColor.black.withAlphaComponent(0.55)).cgColor
+        }
+    }
+
+    @objc private func directionTapped(_ sender: NSButton) {
+        switch sender.tag {
+        case 0: scrollStrategy = .vertical
+        case 1: scrollStrategy = .horizontal
+        default: scrollStrategy = .panorama
+        }
+        updateDirectionButtons()
+        onScrollDirectionChanged?(scrollStrategy)
+    }
+
+    override func layout() {
+        super.layout()
+        guard scrollMode else { return }
+        let width: CGFloat = 64
+        let height: CGFloat = 24
+        let gap: CGFloat = 8
+        let total = width * CGFloat(directionButtons.count) + gap * CGFloat(max(0, directionButtons.count - 1))
+        var x = (bounds.width - total) / 2
+        let y = bounds.height - 72
+        for button in directionButtons {
+            button.frame = CGRect(x: x, y: y, width: width, height: height)
+            x += width + gap
         }
     }
 
@@ -249,7 +320,12 @@ final class SelectionOverlayView: NSView {
 
     private func drawHint() {
         let text: String
-        if allowsWindowPicking {
+        if scrollMode {
+            text = L10n.t(
+                "拖拽选区或点击窗口 · 选择滚动方向 · Esc 取消",
+                "Drag a region or click a window · Choose a scroll direction · Esc cancels"
+            )
+        } else if allowsWindowPicking {
             text = L10n.t(
                 "移动高亮窗口 · 点击截窗口 · 拖拽截区域 · 点空白截全屏 · F 全屏 · Esc 取消",
                 "Hover to highlight a window · Click to capture it · Drag to select · Click desktop for full screen · F for full screen · Esc cancels"
@@ -262,7 +338,8 @@ final class SelectionOverlayView: NSView {
             .foregroundColor: NSColor.white,
         ]
         let size = (text as NSString).size(withAttributes: attributes)
-        let origin = CGPoint(x: (bounds.width - size.width - 24) / 2, y: bounds.height - size.height - 40)
+        let hintOffset: CGFloat = scrollMode ? 104 : 40
+        let origin = CGPoint(x: (bounds.width - size.width - 24) / 2, y: bounds.height - size.height - hintOffset)
         let background = NSRect(x: origin.x, y: origin.y - 8, width: size.width + 24, height: size.height + 16)
         NSColor.black.withAlphaComponent(0.65).setFill()
         NSBezierPath(roundedRect: background, xRadius: 8, yRadius: 8).fill()
@@ -318,6 +395,9 @@ final class SelectionOverlayView: NSView {
         dragStart = CGPoint(x: x.value, y: y.value)
         selection = .zero
         didDrag = false
+        if allowsWindowPicking {
+            hoveredWindowIndex = topmostWindowIndex(at: raw)
+        }
         needsDisplay = true
     }
 
@@ -349,6 +429,21 @@ final class SelectionOverlayView: NSView {
     override func mouseUp(with event: NSEvent) {
         guard dragStart != nil else { return }
         dragStart = nil
+
+        if scrollMode {
+            let rect: CGRect?
+            if didDrag, selection.width >= 2, selection.height >= 2 {
+                rect = selection
+            } else if let index = hoveredWindowIndex, windowHits.indices.contains(index) {
+                rect = windowHits[index].rect
+            } else {
+                rect = nil
+            }
+            if let rect {
+                onScrollRegionSelected?(pixelRect(for: rect))
+            }
+            return
+        }
 
         if allowsWindowPicking, !didDrag {
             if let index = hoveredWindowIndex, windowHits.indices.contains(index) {

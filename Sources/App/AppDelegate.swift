@@ -49,13 +49,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             modifiers: [.control, .command]
         ))
 
-        let scrollItem = NSMenuItem(title: L10n.t("滚动截图", "Scrolling Capture"), action: nil, keyEquivalent: "")
-        let scrollMenu = NSMenu(title: L10n.t("滚动截图", "Scrolling Capture"))
-        scrollMenu.addItem(menuItem(title: L10n.t("竖向滚动", "Vertical"), action: #selector(captureScroll)))
-        scrollMenu.addItem(menuItem(title: L10n.t("横向滚动", "Horizontal"), action: #selector(captureScrollHorizontal)))
-        scrollMenu.addItem(menuItem(title: L10n.t("全景滚动", "Panorama"), action: #selector(capturePanorama)))
-        scrollItem.submenu = scrollMenu
-        menu.addItem(scrollItem)
+        menu.addItem(menuItem(title: L10n.t("滚动截图", "Scrolling Capture"), action: #selector(captureScroll)))
 
         let moreItem = NSMenuItem(title: L10n.t("更多截图", "More Capture Modes"), action: nil, keyEquivalent: "")
         let moreMenu = NSMenu(title: L10n.t("更多截图", "More Capture Modes"))
