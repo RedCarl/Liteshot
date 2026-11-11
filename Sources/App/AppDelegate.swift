@@ -83,6 +83,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         newlineItem.state = AppSettings.shared.ocrPreserveNewlines ? .on : .off
         menu.addItem(newlineItem)
+
+        let appendItem = menuItem(
+            title: L10n.t("增量添加到剪贴板", "Append OCR to Clipboard"),
+            action: #selector(toggleOCRAppend)
+        )
+        appendItem.state = AppSettings.shared.ocrAppendToClipboard ? .on : .off
+        menu.addItem(appendItem)
         menu.addItem(menuItem(title: L10n.t("截图二维码", "QR / Barcode"), action: #selector(captureQR)))
 
         menu.addItem(.separator())
@@ -158,6 +165,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func showOCRWindow() {
         OCRResultWindowController.shared.showLast()
+    }
+
+    @objc private func toggleOCRAppend() {
+        AppSettings.shared.ocrAppendToClipboard.toggle()
+        if let item = statusItem?.menu?.items.first(where: { $0.action == #selector(toggleOCRAppend) }) {
+            item.state = AppSettings.shared.ocrAppendToClipboard ? .on : .off
+        }
     }
 
     @objc private func toggleOCRNewlines() {

@@ -165,6 +165,7 @@ struct SettingsView: View {
                     Toggle(tr("显示放大镜与取色（C）", "Show Magnifier and Color Picker (C)"), isOn: $settings.showMagnifier)
                     Toggle(tr("边界吸附", "Snap to Window and Screen Edges"), isOn: $settings.snapToEdges)
                     Toggle(tr("OCR 保留文字换行", "Preserve OCR Line Breaks"), isOn: $settings.ocrPreserveNewlines)
+                    Toggle(tr("OCR 增量添加到剪贴板", "Append OCR to Clipboard"), isOn: $settings.ocrAppendToClipboard)
                 }
             }
             .formStyle(.grouped)

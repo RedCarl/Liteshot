@@ -506,8 +506,15 @@ final class CaptureCoordinator {
                         NSSound.beep()
                     } else {
                         let pasteboard = NSPasteboard.general
-                        pasteboard.clearContents()
-                        pasteboard.setString(text, forType: .string)
+                        if AppSettings.shared.ocrAppendToClipboard,
+                           let existing = pasteboard.string(forType: .string),
+                           !existing.isEmpty {
+                            pasteboard.clearContents()
+                            pasteboard.setString(existing + "\n" + text, forType: .string)
+                        } else {
+                            pasteboard.clearContents()
+                            pasteboard.setString(text, forType: .string)
+                        }
                         NSSound(named: "Glass")?.play()
                     }
                 case .qr:

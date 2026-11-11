@@ -101,6 +101,10 @@ final class AppSettings: ObservableObject {
         didSet { store.set(highlightColorHex, forKey: Keys.highlightColorHex) }
     }
 
+    @Published var ocrAppendToClipboard: Bool {
+        didSet { store.set(ocrAppendToClipboard, forKey: Keys.ocrAppendToClipboard) }
+    }
+
     @Published var ocrPreserveNewlines: Bool {
         didSet { store.set(ocrPreserveNewlines, forKey: Keys.ocrPreserveNewlines) }
     }
@@ -160,6 +164,7 @@ final class AppSettings: ObservableObject {
         static let showMagnifier = "settings.showMagnifier"
         static let snapToEdges = "settings.snapToEdges"
         static let ocrPreserveNewlines = "settings.ocrPreserveNewlines"
+        static let ocrAppendToClipboard = "settings.ocrAppendToClipboard"
         static let maskOpacity = "settings.maskOpacity"
         static let exportShadowBlur = "settings.exportShadowBlur"
         static let exportShadowOpacity = "settings.exportShadowOpacity"
@@ -192,6 +197,7 @@ final class AppSettings: ObservableObject {
         showMagnifier = defaults.object(forKey: Keys.showMagnifier) as? Bool ?? true
         snapToEdges = defaults.object(forKey: Keys.snapToEdges) as? Bool ?? true
         ocrPreserveNewlines = defaults.object(forKey: Keys.ocrPreserveNewlines) as? Bool ?? true
+        ocrAppendToClipboard = defaults.object(forKey: Keys.ocrAppendToClipboard) as? Bool ?? false
         maskOpacity = defaults.object(forKey: Keys.maskOpacity) as? Double ?? 0.45
         exportShadowBlur = defaults.object(forKey: Keys.exportShadowBlur) as? Double ?? 18
         exportShadowOpacity = defaults.object(forKey: Keys.exportShadowOpacity) as? Double ?? 0.45
