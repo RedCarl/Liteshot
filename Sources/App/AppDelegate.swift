@@ -48,6 +48,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             key: "a",
             modifiers: [.control, .command]
         ))
+        menu.addItem(menuItem(title: L10n.t("截图并复制", "Capture and Copy"), action: #selector(captureCopy)))
 
         menu.addItem(menuItem(title: L10n.t("滚动截图", "Scrolling Capture"), action: #selector(captureScroll)))
 
@@ -62,6 +63,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(moreItem)
         // 保留 OCR / 二维码为快捷动作。
         menu.addItem(menuItem(title: L10n.t("截图 OCR", "Text OCR"), action: #selector(captureOCR)))
+        menu.addItem(menuItem(title: L10n.t("静默 OCR", "Silent OCR"), action: #selector(captureSilentOCR)))
         menu.addItem(menuItem(title: L10n.t("截图二维码", "QR / Barcode"), action: #selector(captureQR)))
 
         menu.addItem(.separator())
@@ -125,6 +127,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func captureAdaptive() {
         CaptureCoordinator.shared.begin(.adaptive)
+    }
+
+    @objc private func captureCopy() {
+        CaptureCoordinator.shared.begin(.adaptiveCopy)
+    }
+
+    @objc private func captureSilentOCR() {
+        CaptureCoordinator.shared.begin(.ocrSilent)
     }
 
     @objc private func captureRegion() {
@@ -295,6 +305,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case "last": mode = .lastArea
         case "delayed": mode = .delayed
         case "adaptive": mode = .adaptive
+        case "copy": mode = .adaptiveCopy
+        case "ocrsilent": mode = .ocrSilent
         case "scroll": mode = .scroll
         case "scrollh": mode = .scrollHorizontal
         case "panorama": mode = .panorama

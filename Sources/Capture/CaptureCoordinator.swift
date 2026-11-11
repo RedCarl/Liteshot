@@ -11,6 +11,8 @@ enum CaptureMode {
     case scrollHorizontal
     case panorama
     case adaptive
+    case adaptiveCopy
+    case ocrSilent
     case crossScreen
     case ocr
     case qr
@@ -96,6 +98,8 @@ final class CaptureCoordinator {
                     try await startRegionCapture()
                 case .adaptive:
                     try await startAdaptiveCapture()
+                case .adaptiveCopy:
+                    try await startAdaptiveCopyCapture()
                 case .window:
                     try await startWindowCapture()
                 case .fullScreen:
@@ -112,7 +116,7 @@ final class CaptureCoordinator {
                     try await startScrollCapture(strategy: .panorama)
                 case .crossScreen:
                     try await startCrossScreenCapture()
-                case .ocr, .qr:
+                case .ocr, .qr, .ocrSilent:
                     try await startRecognitionCapture(mode: mode)
                 }
             } catch {
@@ -203,6 +207,20 @@ final class CaptureCoordinator {
     private func startAdaptiveCapture() async throws {
         let (screen, image) = try await captureCurrentScreen()
         presentRegionOverlay(on: screen, image: image, allowsWindowPicking: true)
+    }
+
+    private func startAdaptiveCopyCapture() async throws {
+        let (screen, image) = try await captureCurrentScreen()
+        presentRegionOverlay(
+            on: screen,
+            image: image,
+            allowsWindowPicking: true,
+            skipActionBar: true,
+            onSelected: { cropped, _ in
+                ClipboardService.copy(image: cropped)
+                NSSound(named: "Glass")?.play()
+            }
+        )
     }
 
     private func startScrollCapture(strategy: ScrollStrategy) async throws {
@@ -351,6 +369,17 @@ final class CaptureCoordinator {
                 case .ocr:
                     let text = try OCRService.recognizeText(in: image)
                     OCRResultWindowController.shared.show(title: L10n.t("OCR 结果", "OCR Result"), text: text)
+                case .ocrSilent:
+                    let text = try OCRService.recognizeText(in: image)
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    if text.isEmpty {
+                        NSSound.beep()
+                    } else {
+                        let pasteboard = NSPasteboard.general
+                        pasteboard.clearContents()
+                        pasteboard.setString(text, forType: .string)
+                        NSSound(named: "Glass")?.play()
+                    }
                 case .qr:
                     let payloads = try OCRService.recognizeBarcodes(in: image)
                     OCRResultWindowController.shared.show(
@@ -394,6 +423,7 @@ final class CaptureCoordinator {
         allowsWindowPicking: Bool = false,
         scrollMode: Bool = false,
         initialScrollStrategy: ScrollStrategy = .vertical,
+        skipActionBar: Bool = false,
         onScrollDirectionChanged: ((ScrollStrategy) -> Void)? = nil,
         onScrollRegionSelected: ((CGRect) -> Void)? = nil,
         onSelected: ((CGImage, CGRect) -> Void)? = nil
@@ -405,7 +435,8 @@ final class CaptureCoordinator {
             displayID: screen.displayID,
             allowsWindowPicking: allowsWindowPicking,
             scrollMode: scrollMode,
-            initialScrollStrategy: initialScrollStrategy
+            initialScrollStrategy: initialScrollStrategy,
+            skipActionBar: skipActionBar
         )
         if allowsWindowPicking, !scrollMode {
             view.onPickWindow = { [weak self] window in

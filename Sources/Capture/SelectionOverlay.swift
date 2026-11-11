@@ -39,6 +39,7 @@ final class SelectionOverlayView: NSView {
 
     private let allowsWindowPicking: Bool
     private let scrollMode: Bool
+    private let skipActionBar: Bool
     private var windowHits: [WindowHit] = []
     private var hoveredWindowIndex: Int?
     private var selectedWindows: [WindowHit] = []
@@ -56,7 +57,7 @@ final class SelectionOverlayView: NSView {
     private var actionBar: NSView?
     private var pendingImage: CGImage?
     private var pendingPixelRect: CGRect?
-    private var showsActionBar: Bool { allowsWindowPicking && !scrollMode }
+    private var showsActionBar: Bool { allowsWindowPicking && !scrollMode && !skipActionBar }
 
     init(
         frame: NSRect,
@@ -64,12 +65,14 @@ final class SelectionOverlayView: NSView {
         displayID: CGDirectDisplayID,
         allowsWindowPicking: Bool = false,
         scrollMode: Bool = false,
-        initialScrollStrategy: ScrollStrategy = .vertical
+        initialScrollStrategy: ScrollStrategy = .vertical,
+        skipActionBar: Bool = false
     ) {
         self.image = image
         self.displayImage = NSImage(cgImage: image, size: frame.size)
         self.allowsWindowPicking = allowsWindowPicking
         self.scrollMode = scrollMode
+        self.skipActionBar = skipActionBar
         self.scrollStrategy = initialScrollStrategy
         super.init(frame: frame)
         wantsLayer = true
@@ -665,6 +668,18 @@ final class SelectionOverlayView: NSView {
         }
 
         if allowsWindowPicking, !didDrag {
+            if skipActionBar {
+                if let index = hoveredWindowIndex, windowHits.indices.contains(index) {
+                    let rect = pixelRect(for: windowHits[index].rect)
+                    if let cropped = image.cropping(to: rect) {
+                        onComplete?(cropped, rect)
+                    }
+                } else {
+                    let full = CGRect(x: 0, y: 0, width: image.width, height: image.height)
+                    onComplete?(image, full)
+                }
+                return
+            }
             if showsActionBar {
                 if let index = hoveredWindowIndex, windowHits.indices.contains(index) {
                     let viewRect = windowHits[index].rect
