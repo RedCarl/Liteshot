@@ -210,6 +210,17 @@ final class EditorViewController: NSViewController {
         spacer.translatesAutoresizingMaskIntoConstraints = false
         stack.addArrangedSubview(spacer)
 
+        let openWithButton = NSButton()
+        configure(
+            button: openWithButton,
+            symbol: "arrow.up.forward.app",
+            tooltip: L10n.t("用其它 App 打开", "Open With…"),
+            action: #selector(openWithApp)
+        )
+        openWithButton.keyEquivalent = "o"
+        openWithButton.keyEquivalentModifierMask = [.command]
+        stack.addArrangedSubview(openWithButton)
+
         let downloadButton = NSButton()
         configure(
             button: downloadButton,
@@ -459,6 +470,48 @@ final class EditorViewController: NSViewController {
     @objc private func redo() {
         document.redo()
         canvas.select(id: nil)
+    }
+
+    @objc private func openWithApp() {
+        guard let rendered = EditorRenderer.render(
+            image: image,
+            annotations: document.annotations,
+            options: exportOptions
+        ), let png = ImageEncoding.pngData(from: rendered) else {
+            return
+        }
+
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Liteshot-Open-\(UUID().uuidString.prefix(8)).png")
+        do {
+            try png.write(to: url)
+        } catch {
+            flashTitle(L10n.t("导出失败", "Export failed"))
+            return
+        }
+
+        let panel = NSOpenPanel()
+        panel.title = L10n.t("选择打开方式", "Choose an App")
+        panel.prompt = L10n.t("打开", "Open")
+        panel.allowedContentTypes = [.application]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.directoryURL = URL(fileURLWithPath: "/Applications")
+
+        panel.begin { response in
+            guard response == .OK, let appURL = panel.url else { return }
+            NSWorkspace.shared.open(
+                [url],
+                withApplicationAt: appURL,
+                configuration: NSWorkspace.OpenConfiguration()
+            ) { _, error in
+                if error != nil {
+                    DispatchQueue.main.async {
+                        self.flashTitle(L10n.t("打开失败", "Open failed"))
+                    }
+                }
+            }
+        }
     }
 
     @objc private func downloadImage() {

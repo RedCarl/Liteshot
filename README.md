@@ -108,7 +108,7 @@ tccutil reset ScreenCapture com.redcarl.Liteshot
 
 截图后默认打开标注编辑器（可在设置里关闭）。编辑器快捷键：
 
-- `⌘C` 复制、`⌘S` 保存、`⌘W` 关闭
+- `⌘C` 复制、`⌘S` 保存、`⌘O` 用其它 App 打开、`⌘W` 关闭
 - `⌘Z` / `⇧⌘Z` 撤销 / 重做
 - `Delete` 删除选中、方向键 1px 微调（Shift 10px）
 - `⌘[` / `⌘]` 下移 / 上移图层
