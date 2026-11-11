@@ -619,7 +619,12 @@ final class SelectionOverlayView: NSView {
         let size = (text as NSString).size(withAttributes: attributes)
 
         var origin = CGPoint(x: selection.minX, y: selection.minY - size.height - 10)
-        if origin.y < 6 {
+        if AppSettings.shared.sizeLabelAtTop {
+            origin.y = selection.maxY + 10
+            if origin.y + size.height + 10 > bounds.height {
+                origin.y = selection.minY - size.height - 10
+            }
+        } else if origin.y < 6 {
             origin.y = selection.maxY + 10
         }
 

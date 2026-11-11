@@ -114,6 +114,7 @@ struct SettingsView: View {
                             .monospacedDigit()
                             .frame(width: 42, alignment: .trailing)
                     }
+                    Toggle(tr("尺寸标签显示在选区上方", "Show Size Label Above Selection"), isOn: $settings.sizeLabelAtTop)
                     ColorPicker(tr("高亮颜色", "Highlight Color"), selection: Binding(
                         get: {
                             Color(nsColor: NSColor(hex: settings.highlightColorHex) ?? .controlAccentColor)
