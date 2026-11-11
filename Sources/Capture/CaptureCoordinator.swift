@@ -10,6 +10,7 @@ enum CaptureMode {
     case scroll
     case scrollHorizontal
     case panorama
+    case adaptive
     case crossScreen
     case ocr
     case qr
@@ -92,6 +93,8 @@ final class CaptureCoordinator {
                 switch mode {
                 case .region, .delayed:
                     try await startRegionCapture()
+                case .adaptive:
+                    try await startAdaptiveCapture()
                 case .window:
                     try await startWindowCapture()
                 case .fullScreen:
@@ -195,6 +198,11 @@ final class CaptureCoordinator {
     }
 
     // MARK: - Overlays
+
+    private func startAdaptiveCapture() async throws {
+        let (screen, image) = try await captureCurrentScreen()
+        presentRegionOverlay(on: screen, image: image, allowsWindowPicking: true)
+    }
 
     private func startScrollCapture(strategy: ScrollStrategy) async throws {
         let (screen, image) = try await captureCurrentScreen()
@@ -365,14 +373,21 @@ final class CaptureCoordinator {
     private func presentRegionOverlay(
         on screen: NSScreen,
         image: CGImage,
+        allowsWindowPicking: Bool = false,
         onSelected: ((CGImage, CGRect) -> Void)? = nil
     ) {
         let window = makeOverlayWindow(on: screen)
         let view = SelectionOverlayView(
             frame: NSRect(origin: .zero, size: screen.frame.size),
             image: image,
-            displayID: screen.displayID
+            displayID: screen.displayID,
+            allowsWindowPicking: allowsWindowPicking
         )
+        if allowsWindowPicking {
+            view.onPickWindow = { [weak self] window in
+                self?.handleWindowPick([window], on: screen)
+            }
+        }
         view.onComplete = { [weak self] cropped, pixelRect in
             LastAreaStore.save(pixelRect, displayID: screen.displayID)
             if let onSelected {

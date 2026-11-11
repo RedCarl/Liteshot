@@ -91,9 +91,7 @@ struct SettingsView: View {
                 }
 
                 Section(header: Text(tr("快捷键", "Shortcuts"))) {
-                    shortcutRow(tr("区域截图", "Region Capture"), shortcut: $settings.regionShortcut)
-                    shortcutRow(tr("全屏截图", "Full Screen Capture"), shortcut: $settings.fullScreenShortcut)
-                    shortcutRow(tr("窗口截图", "Window Capture"), shortcut: $settings.windowShortcut)
+                    shortcutRow(tr("截图", "Capture"), shortcut: $settings.regionShortcut)
                     Text(tr(
                         "点击后按下新的组合键，至少包含一个修饰键；Esc 取消录制。",
                         "Click, then press a new shortcut with at least one modifier. Esc cancels."
@@ -131,8 +129,6 @@ struct SettingsView: View {
         }
         .frame(width: 500, height: 720)
         .onChange(of: settings.regionShortcut) { _, _ in refreshHotKeys() }
-        .onChange(of: settings.fullScreenShortcut) { _, _ in refreshHotKeys() }
-        .onChange(of: settings.windowShortcut) { _, _ in refreshHotKeys() }
     }
 
     private func tr(_ chinese: String, _ english: String) -> String {

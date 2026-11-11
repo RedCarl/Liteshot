@@ -23,15 +23,35 @@ final class SelectionOverlayView: NSView {
     private var activeSnapY: CGFloat?
     private let snapThreshold: CGFloat = 8
 
+    private struct WindowHit {
+        let window: CapturableWindow
+        let rect: CGRect
+    }
+
+    private let allowsWindowPicking: Bool
+    private var windowHits: [WindowHit] = []
+    private var hoveredWindowIndex: Int?
+    private var didDrag = false
+
     var onComplete: ((CGImage, CGRect) -> Void)?
     var onCancel: (() -> Void)?
+    var onPickWindow: ((CapturableWindow) -> Void)?
 
-    init(frame: NSRect, image: CGImage, displayID: CGDirectDisplayID) {
+    init(
+        frame: NSRect,
+        image: CGImage,
+        displayID: CGDirectDisplayID,
+        allowsWindowPicking: Bool = false
+    ) {
         self.image = image
         self.displayImage = NSImage(cgImage: image, size: frame.size)
+        self.allowsWindowPicking = allowsWindowPicking
         super.init(frame: frame)
         wantsLayer = true
         loadSnapGuides(displayID: displayID)
+        if allowsWindowPicking {
+            loadWindowHits(displayID: displayID)
+        }
     }
 
     private func loadSnapGuides(displayID: CGDirectDisplayID) {
@@ -54,6 +74,33 @@ final class SelectionOverlayView: NSView {
                 snapGuidesY.append(value)
             }
         }
+    }
+
+    private func loadWindowHits(displayID: CGDirectDisplayID) {
+        let screenBounds = CGDisplayBounds(displayID)
+        for window in WindowCaptureService.windows(on: displayID) {
+            let localX = window.frame.minX - screenBounds.minX
+            let localY = bounds.height - (window.frame.minY - screenBounds.minY) - window.frame.height
+            let rect = CGRect(
+                x: localX,
+                y: localY,
+                width: window.frame.width,
+                height: window.frame.height
+            )
+            guard rect.intersects(bounds), rect.width >= 16, rect.height >= 16 else { continue }
+            windowHits.append(WindowHit(window: window, rect: rect))
+        }
+    }
+
+    private func topmostWindowIndex(at point: CGPoint) -> Int? {
+        // 窗口列表不保证可见层级；优先取包含光标的最小窗口，避免全屏底层窗口吞掉小窗口。
+        windowHits.indices
+            .filter { windowHits[$0].rect.contains(point) }
+            .min { lhs, rhs in
+                let left = windowHits[lhs].rect.width * windowHits[lhs].rect.height
+                let right = windowHits[rhs].rect.width * windowHits[rhs].rect.height
+                return left < right
+            }
     }
 
     private func snapped(_ value: CGFloat, guides: [CGFloat]) -> (value: CGFloat, guide: CGFloat?) {
@@ -86,6 +133,17 @@ final class SelectionOverlayView: NSView {
         super.viewDidMoveToWindow()
         window?.invalidateCursorRects(for: self)
         window?.makeFirstResponder(self)
+
+        if let location = window?.mouseLocationOutsideOfEventStream {
+            let point = convert(location, from: nil)
+            cursorPoint = point
+            let pixel = imagePoint(point)
+            currentColor = sampler?.color(atX: Int(pixel.x), y: Int(pixel.y))
+            if allowsWindowPicking {
+                hoveredWindowIndex = topmostWindowIndex(at: point)
+            }
+            needsDisplay = true
+        }
     }
 
     override func updateTrackingAreas() {
@@ -109,6 +167,25 @@ final class SelectionOverlayView: NSView {
         NSColor.black.withAlphaComponent(0.45).setFill()
         bounds.fill()
 
+        if selection.width == 0,
+           allowsWindowPicking,
+           let index = hoveredWindowIndex,
+           windowHits.indices.contains(index) {
+            let hit = windowHits[index]
+
+            NSGraphicsContext.saveGraphicsState()
+            NSBezierPath(rect: hit.rect).addClip()
+            displayImage.draw(in: bounds)
+            NSGraphicsContext.restoreGraphicsState()
+
+            NSColor.controlAccentColor.setStroke()
+            let border = NSBezierPath(rect: hit.rect.insetBy(dx: 1, dy: 1))
+            border.lineWidth = 2
+            border.stroke()
+
+            drawWindowTitle(for: hit)
+        }
+
         if selection.width > 0, selection.height > 0 {
             NSGraphicsContext.saveGraphicsState()
             NSBezierPath(rect: selection).addClip()
@@ -128,6 +205,25 @@ final class SelectionOverlayView: NSView {
         drawSnapGuides()
         drawMagnifier()
         drawStatus()
+    }
+
+    private func drawWindowTitle(for hit: WindowHit) {
+        let text = hit.window.displayTitle
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 12, weight: .medium),
+            .foregroundColor: NSColor.white,
+        ]
+        let size = (text as NSString).size(withAttributes: attributes)
+        var origin = CGPoint(x: hit.rect.minX, y: hit.rect.maxY + 8)
+        if origin.y + size.height + 10 > bounds.height - 4 {
+            origin.y = hit.rect.minY - size.height - 14
+        }
+        origin.x = min(max(origin.x, 4), bounds.width - size.width - 20)
+
+        let background = NSRect(x: origin.x, y: origin.y - 4, width: size.width + 12, height: size.height + 8)
+        NSColor.black.withAlphaComponent(0.78).setFill()
+        NSBezierPath(roundedRect: background, xRadius: 4, yRadius: 4).fill()
+        (text as NSString).draw(at: CGPoint(x: origin.x + 6, y: origin.y), withAttributes: attributes)
     }
 
     private func drawSnapGuides() {
@@ -152,7 +248,15 @@ final class SelectionOverlayView: NSView {
     }
 
     private func drawHint() {
-        let text = L10n.t("拖拽选择区域 · C 复制色值 · Esc / 右键取消", "Drag to select · C copies color · Esc / right-click cancels")
+        let text: String
+        if allowsWindowPicking {
+            text = L10n.t(
+                "移动高亮窗口 · 点击截窗口 · 拖拽截区域 · 点空白截全屏 · F 全屏 · Esc 取消",
+                "Hover to highlight a window · Click to capture it · Drag to select · Click desktop for full screen · F for full screen · Esc cancels"
+            )
+        } else {
+            text = L10n.t("拖拽选择区域 · C 复制色值 · Esc / 右键取消", "Drag to select · C copies color · Esc / right-click cancels")
+        }
         let attributes: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 13, weight: .medium),
             .foregroundColor: NSColor.white,
@@ -192,6 +296,10 @@ final class SelectionOverlayView: NSView {
         cursorPoint = point
         let pixel = imagePoint(point)
         currentColor = sampler?.color(atX: Int(pixel.x), y: Int(pixel.y))
+
+        if allowsWindowPicking, dragStart == nil, selection.width == 0 {
+            hoveredWindowIndex = topmostWindowIndex(at: point)
+        }
         needsDisplay = true
     }
 
@@ -209,6 +317,7 @@ final class SelectionOverlayView: NSView {
         activeSnapY = y.guide
         dragStart = CGPoint(x: x.value, y: y.value)
         selection = .zero
+        didDrag = false
         needsDisplay = true
     }
 
@@ -220,6 +329,10 @@ final class SelectionOverlayView: NSView {
         activeSnapX = snappedX.guide
         activeSnapY = snappedY.guide
         let current = CGPoint(x: snappedX.value, y: snappedY.value)
+        if abs(current.x - start.x) > 3 || abs(current.y - start.y) > 3 {
+            didDrag = true
+            hoveredWindowIndex = nil
+        }
         var width = abs(current.x - start.x)
         var height = abs(current.y - start.y)
         if event.modifierFlags.contains(.shift) {
@@ -236,6 +349,16 @@ final class SelectionOverlayView: NSView {
     override func mouseUp(with event: NSEvent) {
         guard dragStart != nil else { return }
         dragStart = nil
+
+        if allowsWindowPicking, !didDrag {
+            if let index = hoveredWindowIndex, windowHits.indices.contains(index) {
+                onPickWindow?(windowHits[index].window)
+            } else {
+                let full = CGRect(x: 0, y: 0, width: image.width, height: image.height)
+                onComplete?(image, full)
+            }
+            return
+        }
 
         guard selection.width >= 2, selection.height >= 2 else {
             onCancel?()
@@ -275,6 +398,17 @@ final class SelectionOverlayView: NSView {
             default: selection = selection.offsetBy(dx: 0, dy: -step)
             }
             needsDisplay = true
+        case 3: // F：全屏
+            if allowsWindowPicking {
+                let full = CGRect(x: 0, y: 0, width: image.width, height: image.height)
+                onComplete?(image, full)
+            }
+        case 13: // W：当前高亮窗口
+            if allowsWindowPicking,
+               let index = hoveredWindowIndex,
+               windowHits.indices.contains(index) {
+                onPickWindow?(windowHits[index].window)
+            }
         case 53: // Esc
             onCancel?()
         case 36, 76: // Return / Enter

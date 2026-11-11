@@ -1,19 +1,12 @@
 import AppKit
 import Carbon.HIToolbox
-import Sparkle
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
-    private var updaterController: SPUStandardUpdaterController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         ActiveAppTracker.shared.start()
-        updaterController = SPUStandardUpdaterController(
-            startingUpdater: true,
-            updaterDelegate: nil,
-            userDriverDelegate: nil
-        )
         setupMainMenu()
         setupStatusItem()
         setUpHotKeys()
@@ -44,21 +37,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let button = item.button {
             button.image = NSImage(systemSymbolName: "camera.viewfinder", accessibilityDescription: "Liteshot")
             button.image?.isTemplate = true
-            button.toolTip = L10n.t("Liteshot · 截图区域 ⌃⌘A", "Liteshot · Capture Region ⌃⌘A")
+            button.toolTip = L10n.t("Liteshot · 截图 ⌃⌘A", "Liteshot · Capture ⌃⌘A")
         }
 
         let menu = NSMenu()
 
-        menu.addItem(menuItem(title: L10n.t("截图区域", "Capture Region"), action: #selector(captureRegion), key: "a", modifiers: [.control, .command]))
-        menu.addItem(menuItem(title: L10n.t("截取窗口", "Capture Window"), action: #selector(captureWindow), key: "w", modifiers: [.control, .command]))
-        menu.addItem(menuItem(title: L10n.t("全屏截图", "Full Screen Capture"), action: #selector(captureFullScreen), key: "s", modifiers: [.control, .command]))
-        menu.addItem(menuItem(title: L10n.t("截取活动窗口", "Active Window"), action: #selector(captureActiveWindow)))
-        menu.addItem(menuItem(title: L10n.t("截取上一次区域", "Last Area"), action: #selector(captureLastArea)))
-        menu.addItem(menuItem(title: L10n.t("延迟截图", "Delayed Capture"), action: #selector(captureDelayed)))
-        menu.addItem(menuItem(title: L10n.t("滚动截图（竖向）", "Scroll Capture (Vertical)"), action: #selector(captureScroll)))
-        menu.addItem(menuItem(title: L10n.t("滚动截图（横向）", "Scroll Capture (Horizontal)"), action: #selector(captureScrollHorizontal)))
-        menu.addItem(menuItem(title: L10n.t("全景滚动截图", "Panorama Scroll Capture"), action: #selector(capturePanorama)))
-        menu.addItem(menuItem(title: L10n.t("跨屏区域截图", "Cross-Display Region"), action: #selector(captureCrossScreen)))
+        menu.addItem(menuItem(
+            title: L10n.t("截图", "Capture"),
+            action: #selector(captureAdaptive),
+            key: "a",
+            modifiers: [.control, .command]
+        ))
+
+        let scrollItem = NSMenuItem(title: L10n.t("滚动截图", "Scrolling Capture"), action: nil, keyEquivalent: "")
+        let scrollMenu = NSMenu(title: L10n.t("滚动截图", "Scrolling Capture"))
+        scrollMenu.addItem(menuItem(title: L10n.t("竖向滚动", "Vertical"), action: #selector(captureScroll)))
+        scrollMenu.addItem(menuItem(title: L10n.t("横向滚动", "Horizontal"), action: #selector(captureScrollHorizontal)))
+        scrollMenu.addItem(menuItem(title: L10n.t("全景滚动", "Panorama"), action: #selector(capturePanorama)))
+        scrollItem.submenu = scrollMenu
+        menu.addItem(scrollItem)
+
+        let moreItem = NSMenuItem(title: L10n.t("更多截图", "More Capture Modes"), action: nil, keyEquivalent: "")
+        let moreMenu = NSMenu(title: L10n.t("更多截图", "More Capture Modes"))
+        moreMenu.addItem(menuItem(title: L10n.t("全屏截图", "Full Screen"), action: #selector(captureFullScreen)))
+        moreMenu.addItem(menuItem(title: L10n.t("活动窗口", "Active Window"), action: #selector(captureActiveWindow)))
+        moreMenu.addItem(menuItem(title: L10n.t("上次区域", "Last Area"), action: #selector(captureLastArea)))
+        moreMenu.addItem(menuItem(title: L10n.t("延迟截图", "Delayed Capture"), action: #selector(captureDelayed)))
+        moreMenu.addItem(menuItem(title: L10n.t("跨屏区域截图", "Cross-Display Region"), action: #selector(captureCrossScreen)))
+        moreItem.submenu = moreMenu
+        menu.addItem(moreItem)
+        // 保留 OCR / 二维码为快捷动作。
         menu.addItem(menuItem(title: L10n.t("截图 OCR", "Text OCR"), action: #selector(captureOCR)))
         menu.addItem(menuItem(title: L10n.t("截图二维码", "QR / Barcode"), action: #selector(captureQR)))
 
@@ -118,16 +126,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             keyCode: settings.regionShortcut.keyCode,
             modifiers: settings.regionShortcut.modifiers
         )
-        center.register(
-            id: 2,
-            keyCode: settings.fullScreenShortcut.keyCode,
-            modifiers: settings.fullScreenShortcut.modifiers
-        )
-        center.register(
-            id: 3,
-            keyCode: settings.windowShortcut.keyCode,
-            modifiers: settings.windowShortcut.modifiers
-        )
+
+    }
+
+    @objc private func captureAdaptive() {
+        CaptureCoordinator.shared.begin(.adaptive)
     }
 
     @objc private func captureRegion() {
@@ -190,7 +193,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func checkForUpdates() {
-        updaterController?.checkForUpdates(nil)
+        UpdateChecker.shared.check()
     }
 
     @objc private func openAbout() {
@@ -249,8 +252,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         if CommandLine.arguments.contains("--check-updates") {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
-                self?.updaterController?.checkForUpdates(nil)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                UpdateChecker.shared.check()
             }
         }
 
@@ -297,6 +300,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case "active": mode = .activeWindow
         case "last": mode = .lastArea
         case "delayed": mode = .delayed
+        case "adaptive": mode = .adaptive
         case "scroll": mode = .scroll
         case "scrollh": mode = .scrollHorizontal
         case "panorama": mode = .panorama

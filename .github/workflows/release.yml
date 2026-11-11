@@ -66,13 +66,13 @@ jobs:
           name: Liteshot ${{ env.VERSION }}
           generate_release_notes: true
           body: |
-            Liteshot ${{ env.VERSION }}（未签名构建 / unsigned build）
+            Liteshot ${{ env.VERSION }}（ad-hoc 签名，未公证 / ad-hoc signed, not notarized）
 
             - 下载 `Liteshot-${{ env.VERSION }}.zip`，解压后把 `Liteshot.app` 拖到「应用程序」。
             - 首次打开若被 Gatekeeper 拦截：右键 → 打开，或执行
               `xattr -dr com.apple.quarantine /Applications/Liteshot.app`
             - 首次截图需在「系统设置 → 隐私与安全性 → 屏幕与系统音频录制」中授权。
-            - 未签名版本无法使用 Sparkle 自更新。
+            - 更新方式：下载新版 zip 后手动替换 App，不做自动安装。
           files: |
             dist/Liteshot-${{ env.VERSION }}.zip
             dist/Liteshot-${{ env.VERSION }}.zip.sha256
