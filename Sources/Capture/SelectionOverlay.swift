@@ -449,10 +449,21 @@ final class SelectionOverlayView: NSView {
 
         var originX = selection.midX - barWidth / 2
         originX = min(max(originX, 8), bounds.width - barWidth - 8)
-        var originY = selection.minY - barHeight - 10
-        if originY < 8 {
-            originY = min(selection.maxY + 10, bounds.height - barHeight - 8)
+
+        var originY: CGFloat
+        let barGap: CGFloat = 10
+        let required = barHeight + barGap
+        if selection.minY >= required + 8 {
+            // 选区下方有空间，放下面。
+            originY = selection.minY - required
+        } else if bounds.height - selection.maxY >= required + 8 {
+            // 下面不够，放上面。
+            originY = selection.maxY + barGap
+        } else {
+            // 选区几乎占满屏幕，贴着屏幕内缘。
+            originY = bounds.height - barHeight - 12
         }
+        originY = min(max(originY, 8), bounds.height - barHeight - 8)
         bar.frame = CGRect(x: originX, y: originY, width: barWidth, height: barHeight)
         addSubview(bar)
         actionBar = bar
