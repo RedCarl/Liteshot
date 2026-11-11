@@ -210,6 +210,15 @@ final class EditorViewController: NSViewController {
         spacer.translatesAutoresizingMaskIntoConstraints = false
         stack.addArrangedSubview(spacer)
 
+        let downloadButton = NSButton()
+        configure(
+            button: downloadButton,
+            symbol: "arrow.down.circle",
+            tooltip: L10n.t("下载到 Downloads", "Download to Downloads"),
+            action: #selector(downloadImage)
+        )
+        stack.addArrangedSubview(downloadButton)
+
         let shareButton = NSButton()
         configure(
             button: shareButton,
@@ -450,6 +459,30 @@ final class EditorViewController: NSViewController {
     @objc private func redo() {
         document.redo()
         canvas.select(id: nil)
+    }
+
+    @objc private func downloadImage() {
+        guard let rendered = EditorRenderer.render(
+            image: image,
+            annotations: document.annotations,
+            options: exportOptions
+        ), let png = ImageEncoding.pngData(from: rendered) else {
+            return
+        }
+
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        let name = "Liteshot-\(formatter.string(from: Date())).png"
+        let directory = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+            ?? FileManager.default.homeDirectoryForCurrentUser
+        let url = directory.appendingPathComponent(name)
+        do {
+            try png.write(to: url)
+            NSSound(named: "Glass")?.play()
+            flashTitle(L10n.t("已下载到 Downloads", "Downloaded to Downloads"))
+        } catch {
+            flashTitle(L10n.t("下载失败", "Download failed"))
+        }
     }
 
     @objc private func shareImage(_ sender: NSButton) {
