@@ -4,6 +4,7 @@ import Carbon.HIToolbox
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
+    private var historyCursor = -1
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         ActiveAppTracker.shared.start()
@@ -66,6 +67,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         delayItem.submenu = delayMenu
         moreMenu.addItem(delayItem)
         moreMenu.addItem(menuItem(title: L10n.t("跨屏区域截图", "Cross-Display Region"), action: #selector(captureCrossScreen)))
+        moreMenu.addItem(.separator())
+        moreMenu.addItem(menuItem(title: L10n.t("上一张截图", "Previous Screenshot"), action: #selector(openPreviousScreenshot)))
+        moreMenu.addItem(menuItem(title: L10n.t("下一张截图", "Next Screenshot"), action: #selector(openNextScreenshot)))
         moreItem.submenu = moreMenu
         menu.addItem(moreItem)
         // 保留 OCR / 二维码为快捷动作。
@@ -147,6 +151,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func showOCRWindow() {
         OCRResultWindowController.shared.showLast()
+    }
+
+    @objc private func openPreviousScreenshot() {
+        openHistoryScreenshot(offset: 1)
+    }
+
+    @objc private func openNextScreenshot() {
+        openHistoryScreenshot(offset: -1)
+    }
+
+    private func openHistoryScreenshot(offset: Int) {
+        let items = HistoryStore.shared.items
+        guard !items.isEmpty else {
+            NSSound.beep()
+            return
+        }
+        historyCursor = min(max(historyCursor + offset, 0), items.count - 1)
+        let item = items[historyCursor]
+        guard let image = NSImage(contentsOf: item.url),
+              let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+            NSSound.beep()
+            return
+        }
+        EditorWindowController.open(image: cgImage)
+    }
+
+    @objc private func historyPreviousDebug() {
+        openHistoryScreenshot(offset: 1)
     }
 
     @objc private func captureRegion() {
@@ -286,6 +318,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if CommandLine.arguments.contains("--check-updates") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                 UpdateChecker.shared.check()
+            }
+        }
+
+        if CommandLine.arguments.contains("--history-prev") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+                self?.openHistoryScreenshot(offset: 1)
             }
         }
 
