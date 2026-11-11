@@ -26,8 +26,8 @@ enum ScrollCaptureError: LocalizedError {
 final class ScrollCaptureSession: NSObject {
     private let screen: NSScreen
     private let pixelRect: CGRect
-    private let strategy: ScrollStrategy
-    private let stitcher: any ScrollStitching
+    private var strategy: ScrollStrategy
+    private var stitcher: any ScrollStitching
 
     private var hudWindow: NSPanel?
     private var borderWindow: NSWindow?
@@ -56,12 +56,71 @@ final class ScrollCaptureSession: NSObject {
         }
         super.init()
 
+        wireStitcherCallbacks()
+    }
+
+    private func wireStitcherCallbacks() {
         stitcher.onUpdate = { [weak self] height in
             self?.updateStatus(height)
             self?.updateThumbnail()
         }
         stitcher.onWarning = { [weak self] message in
             self?.statusLabel?.stringValue = message
+        }
+    }
+
+    private var initialStatusText: String {
+        switch strategy {
+        case .vertical:
+            return L10n.t("竖向滚动开始拼接…", "Scroll vertically to start…")
+        case .horizontal:
+            return L10n.t("横向滚动开始拼接…", "Scroll horizontally to start…")
+        case .panorama:
+            return L10n.t("滚动页面开始全景拼接…", "Scroll in any direction to start…")
+        }
+    }
+
+    private func rebuildStitcher() {
+        let width = Int(pixelRect.width)
+        let height = Int(pixelRect.height)
+        switch strategy {
+        case .vertical:
+            stitcher = ScrollStitcher(width: width, height: height, axis: .vertical)
+        case .horizontal:
+            stitcher = ScrollStitcher(width: width, height: height, axis: .horizontal)
+        case .panorama:
+            stitcher = PanoramaStitcher(width: width, height: height)
+        }
+        wireStitcherCallbacks()
+        statusLabel?.stringValue = initialStatusText
+        thumbnailView?.image = nil
+    }
+
+    @objc private func strategyChanged(_ sender: NSSegmentedControl) {
+        let selected: ScrollStrategy
+        switch sender.selectedSegment {
+        case 1: selected = .horizontal
+        case 2: selected = .panorama
+        default: selected = .vertical
+        }
+        guard selected != strategy else { return }
+
+        // 已经拼过帧就不允许换方向，避免画布语义混乱。
+        guard stitcher.stitchedLength <= stitcher.baseLength + 4 else {
+            NSSound.beep()
+            sender.selectedSegment = currentSegment
+            return
+        }
+
+        strategy = selected
+        rebuildStitcher()
+    }
+
+    private var currentSegment: Int {
+        switch strategy {
+        case .vertical: return 0
+        case .horizontal: return 1
+        case .panorama: return 2
         }
     }
 
@@ -109,7 +168,7 @@ final class ScrollCaptureSession: NSObject {
 
     private func showHUD() {
         let panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 420, height: 68),
+            contentRect: NSRect(x: 0, y: 0, width: 560, height: 72),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -134,16 +193,7 @@ final class ScrollCaptureSession: NSObject {
         content.addSubview(thumbnail)
         thumbnailView = thumbnail
 
-        let label = NSTextField(labelWithString: {
-            switch strategy {
-            case .vertical:
-                return L10n.t("竖向滚动开始拼接…", "Scroll vertically to start…")
-            case .horizontal:
-                return L10n.t("横向滚动开始拼接…", "Scroll horizontally to start…")
-            case .panorama:
-                return L10n.t("滚动页面开始全景拼接…", "Scroll in any direction to start…")
-            }
-        }())
+        let label = NSTextField(labelWithString: initialStatusText)
         label.font = .systemFont(ofSize: 12, weight: .medium)
         label.textColor = .white
         label.lineBreakMode = .byTruncatingTail
@@ -162,13 +212,30 @@ final class ScrollCaptureSession: NSObject {
         let buttons = NSStackView(views: [finish, cancel])
         buttons.orientation = .horizontal
         buttons.spacing = 8
+        buttons.translatesAutoresizingMaskIntoConstraints = false
 
-        let stack = NSStackView(views: [label, buttons])
-        stack.orientation = .horizontal
-        stack.alignment = .centerY
-        stack.spacing = 12
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        content.addSubview(stack)
+        let direction = NSSegmentedControl(
+            labels: [
+                L10n.t("竖向", "Vertical"),
+                L10n.t("横向", "Horizontal"),
+                L10n.t("全景", "Panorama"),
+            ],
+            trackingMode: .selectOne,
+            target: self,
+            action: #selector(strategyChanged(_:))
+        )
+        direction.selectedSegment = currentSegment
+        direction.controlSize = .small
+        direction.translatesAutoresizingMaskIntoConstraints = false
+
+        let textStack = NSStackView(views: [label, direction])
+        textStack.orientation = .vertical
+        textStack.alignment = .leading
+        textStack.spacing = 4
+        textStack.translatesAutoresizingMaskIntoConstraints = false
+
+        content.addSubview(textStack)
+        content.addSubview(buttons)
 
         NSLayoutConstraint.activate([
             thumbnail.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 6),
@@ -176,19 +243,22 @@ final class ScrollCaptureSession: NSObject {
             thumbnail.widthAnchor.constraint(equalToConstant: 88),
             thumbnail.heightAnchor.constraint(equalToConstant: 54),
 
-            stack.leadingAnchor.constraint(equalTo: thumbnail.trailingAnchor, constant: 10),
-            stack.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -12),
-            stack.centerYAnchor.constraint(equalTo: content.centerYAnchor),
-            label.widthAnchor.constraint(greaterThanOrEqualToConstant: 130),
+            textStack.leadingAnchor.constraint(equalTo: thumbnail.trailingAnchor, constant: 10),
+            textStack.centerYAnchor.constraint(equalTo: content.centerYAnchor),
+            label.widthAnchor.constraint(greaterThanOrEqualToConstant: 140),
+
+            buttons.leadingAnchor.constraint(greaterThanOrEqualTo: textStack.trailingAnchor, constant: 8),
+            buttons.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -12),
+            buttons.centerYAnchor.constraint(equalTo: content.centerYAnchor),
         ])
 
         panel.contentView = content
         panel.setFrame(
             NSRect(
-                x: screen.frame.midX - 210,
+                x: screen.frame.midX - 280,
                 y: screen.frame.minY + 80,
-                width: 420,
-                height: 68
+                width: 560,
+                height: 72
             ),
             display: true
         )
