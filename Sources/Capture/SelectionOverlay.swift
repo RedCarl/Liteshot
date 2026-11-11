@@ -6,6 +6,8 @@ enum SelectionAction: Int {
     case save
     case scroll
     case ocr
+    case qr
+    case download
     case pin
 }
 
@@ -454,6 +456,8 @@ final class SelectionOverlayView: NSView {
             (L10n.t("保存", "Save"), "square.and.arrow.down", .save),
             (L10n.t("滚动", "Scroll"), "arrow.up.and.down", .scroll),
             ("OCR", "text.viewfinder", .ocr),
+            (L10n.t("二维码", "QR"), "qrcode", .qr),
+            (L10n.t("下载", "Download"), "arrow.down.circle", .download),
             (L10n.t("钉图", "Pin"), "pin", .pin),
         ]
 
@@ -543,7 +547,9 @@ final class SelectionOverlayView: NSView {
         case 20: return .save
         case 21: return .scroll
         case 23: return .ocr
-        case 22: return .pin
+        case 22: return .qr
+        case 26: return .download
+        case 28: return .pin
         default: return nil
         }
     }
@@ -701,7 +707,11 @@ final class SelectionOverlayView: NSView {
         activeSnapX = snappedX.guide
         activeSnapY = snappedY.guide
         let current = CGPoint(x: snappedX.value, y: snappedY.value)
-        if abs(current.x - start.x) > 3 || abs(current.y - start.y) > 3 {
+        let dragDistance = max(abs(current.x - start.x), abs(current.y - start.y))
+        if !didDrag, dragDistance <= 6 {
+            return
+        }
+        if dragDistance > 6 {
             didDrag = true
             hoveredWindowIndex = nil
         }
@@ -744,6 +754,7 @@ final class SelectionOverlayView: NSView {
         }
 
         if allowsWindowPicking, !didDrag {
+            selection = .zero
             if skipActionBar {
                 if let index = hoveredWindowIndex, windowHits.indices.contains(index) {
                     let rect = pixelRect(for: windowHits[index].rect)

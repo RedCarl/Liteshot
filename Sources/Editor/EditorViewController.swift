@@ -20,6 +20,7 @@ final class EditorViewController: NSViewController {
 
     private var currentTool: AnnotationTool = .select
     private var sharePicker: NSSharingServicePicker?
+    var onCloseRequest: (() -> Void)?
 
     init(image: CGImage) {
         self.image = image
@@ -606,7 +607,11 @@ final class EditorViewController: NSViewController {
     }
 
     @objc private func closeEditor() {
-        view.window?.performClose(nil)
+        if let onCloseRequest {
+            onCloseRequest()
+        } else {
+            view.window?.performClose(nil)
+        }
     }
 
     private var exportOptions: ExportOptions {

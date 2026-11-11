@@ -46,6 +46,7 @@ final class CaptureCoordinator {
     private var scrollSession: ScrollCaptureSession?
     private var crossScreenController: CrossScreenCaptureController?
     private var pendingScrollStrategy: ScrollStrategy = .vertical
+    private var inlineEditor: EditorViewController?
     private var isCapturing = false
 
     private init() {}
@@ -180,6 +181,39 @@ final class CaptureCoordinator {
             return
         }
         commit(cropped)
+    }
+
+    private func showInlineEditor(image: CGImage, on screen: NSScreen) {
+        guard let window = overlayWindow else { return }
+        let editor = EditorViewController(image: image)
+        editor.onCloseRequest = { [weak self] in
+            self?.inlineEditor = nil
+            self?.dismissOverlay(hideApp: true)
+        }
+        inlineEditor = editor
+
+        let editorView = editor.view
+        editorView.frame = window.contentView?.bounds ?? NSRect(origin: .zero, size: screen.frame.size)
+        editorView.autoresizingMask = [.width, .height]
+        window.contentView = editorView
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeFirstResponder(editorView)
+    }
+
+    private func saveToDownloads(_ image: CGImage) {
+        guard let png = ImageEncoding.pngData(from: image) else { return }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        let directory = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+            ?? FileManager.default.homeDirectoryForCurrentUser
+        let url = directory.appendingPathComponent("Liteshot-\(formatter.string(from: Date())).png")
+        do {
+            try png.write(to: url)
+            NSSound(named: "Glass")?.play()
+        } catch {
+            NSSound.beep()
+        }
     }
 
     private func startLastAreaSave() async throws {
@@ -587,8 +621,7 @@ final class CaptureCoordinator {
                 guard let self else { return }
                 switch action {
                 case .annotate:
-                    self.dismissOverlay(hideApp: true)
-                    self.commit(image)
+                    self.showInlineEditor(image: image, on: screen)
                 case .copy:
                     self.dismissOverlay(hideApp: true)
                     ClipboardService.copy(image: image)
@@ -616,6 +649,12 @@ final class CaptureCoordinator {
                 case .ocr:
                     self.dismissOverlay(hideApp: false)
                     self.runRecognition(on: image, mode: .ocr)
+                case .qr:
+                    self.dismissOverlay(hideApp: false)
+                    self.runRecognition(on: image, mode: .qr)
+                case .download:
+                    self.dismissOverlay(hideApp: true)
+                    self.saveToDownloads(image)
                 case .pin:
                     self.dismissOverlay(hideApp: true)
                     PinManager.shared.pin(image)
