@@ -449,8 +449,11 @@ final class CaptureCoordinator {
                     let text = try OCRService.recognizeText(in: image)
                     OCRResultWindowController.shared.show(title: L10n.t("OCR 结果", "OCR Result"), text: text)
                 case .ocrSilent:
-                    let text = try OCRService.recognizeText(in: image)
+                    var text = try OCRService.recognizeText(in: image)
                         .trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !AppSettings.shared.ocrPreserveNewlines {
+                        text = text.replacingOccurrences(of: "\n", with: " ")
+                    }
                     if text.isEmpty {
                         NSSound.beep()
                     } else {

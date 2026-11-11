@@ -76,6 +76,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(menuItem(title: L10n.t("截图 OCR", "Text OCR"), action: #selector(captureOCR)))
         menu.addItem(menuItem(title: L10n.t("静默 OCR", "Silent OCR"), action: #selector(captureSilentOCR)))
         menu.addItem(menuItem(title: L10n.t("显示 OCR 窗口", "Show OCR Window"), action: #selector(showOCRWindow)))
+        let newlineItem = menuItem(
+            title: L10n.t("保留 OCR 文字换行", "Preserve OCR Line Breaks"),
+            action: #selector(toggleOCRNewlines)
+        )
+        newlineItem.state = AppSettings.shared.ocrPreserveNewlines ? .on : .off
+        menu.addItem(newlineItem)
         menu.addItem(menuItem(title: L10n.t("截图二维码", "QR / Barcode"), action: #selector(captureQR)))
 
         menu.addItem(.separator())
@@ -151,6 +157,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func showOCRWindow() {
         OCRResultWindowController.shared.showLast()
+    }
+
+    @objc private func toggleOCRNewlines() {
+        let settings = AppSettings.shared
+        settings.ocrPreserveNewlines.toggle()
+        if let item = (NSApp.delegate as? AppDelegate)?.statusItem?.menu?.items.first(where: {
+            $0.action == #selector(toggleOCRNewlines)
+        }) {
+            item.state = settings.ocrPreserveNewlines ? .on : .off
+        }
     }
 
     @objc private func openPreviousScreenshot() {

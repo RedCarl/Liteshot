@@ -73,6 +73,10 @@ final class AppSettings: ObservableObject {
         didSet { store.set(showMagnifier, forKey: Keys.showMagnifier) }
     }
 
+    @Published var ocrPreserveNewlines: Bool {
+        didSet { store.set(ocrPreserveNewlines, forKey: Keys.ocrPreserveNewlines) }
+    }
+
     @Published var snapToEdges: Bool {
         didSet { store.set(snapToEdges, forKey: Keys.snapToEdges) }
     }
@@ -127,6 +131,7 @@ final class AppSettings: ObservableObject {
         static let includeCursor = "settings.includeCursor"
         static let showMagnifier = "settings.showMagnifier"
         static let snapToEdges = "settings.snapToEdges"
+        static let ocrPreserveNewlines = "settings.ocrPreserveNewlines"
         static let language = L10n.languageKey
         static let regionShortcut = "settings.shortcut.region"
         static let fullScreenShortcut = "settings.shortcut.fullscreen"
@@ -151,6 +156,7 @@ final class AppSettings: ObservableObject {
         includeCursor = defaults.bool(forKey: Keys.includeCursor)
         showMagnifier = defaults.object(forKey: Keys.showMagnifier) as? Bool ?? true
         snapToEdges = defaults.object(forKey: Keys.snapToEdges) as? Bool ?? true
+        ocrPreserveNewlines = defaults.object(forKey: Keys.ocrPreserveNewlines) as? Bool ?? true
         language = AppLanguage(rawValue: defaults.string(forKey: L10n.languageKey) ?? "") ?? .system
         regionShortcut = Self.loadShortcut(
             key: Keys.regionShortcut,
