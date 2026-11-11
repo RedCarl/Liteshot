@@ -7,6 +7,7 @@ struct ExportOptions {
     var shadow: Bool = false
     var shadowBlur: CGFloat = 18
     var shadowOpacity: Double = 0.45
+    var shadowColorHex: String = "#000000"
     var transparent: Bool = false
 }
 
@@ -61,7 +62,8 @@ enum EditorRenderer {
         if options.shadow {
             NSGraphicsContext.saveGraphicsState()
             let shadow = NSShadow()
-            shadow.shadowColor = NSColor.black.withAlphaComponent(options.shadowOpacity)
+            let shadowColor = NSColor(hex: options.shadowColorHex) ?? .black
+            shadow.shadowColor = shadowColor.withAlphaComponent(options.shadowOpacity)
             shadow.shadowBlurRadius = options.shadowBlur
             shadow.shadowOffset = NSSize(width: 0, height: options.shadowBlur / 3)
             shadow.set()

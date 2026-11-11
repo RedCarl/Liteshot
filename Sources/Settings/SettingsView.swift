@@ -96,6 +96,10 @@ struct SettingsView: View {
                                 .monospacedDigit()
                                 .frame(width: 48, alignment: .trailing)
                         }
+                        ColorPicker(tr("阴影颜色", "Shadow Color"), selection: Binding(
+                            get: { Color(nsColor: NSColor(hex: settings.exportShadowColorHex) ?? .black) },
+                            set: { settings.exportShadowColorHex = NSColor($0).hexString }
+                        ))
                     }
                     Toggle(tr("透明背景", "Transparent Background"), isOn: $settings.exportTransparent)
                     Text(tr(
@@ -115,6 +119,10 @@ struct SettingsView: View {
                             .frame(width: 42, alignment: .trailing)
                     }
                     Toggle(tr("尺寸标签显示在选区上方", "Show Size Label Above Selection"), isOn: $settings.sizeLabelAtTop)
+                    ColorPicker(tr("遮罩颜色", "Mask Color"), selection: Binding(
+                        get: { Color(nsColor: NSColor(hex: settings.maskColorHex) ?? .black) },
+                        set: { settings.maskColorHex = NSColor($0).hexString }
+                    ))
                     ColorPicker(tr("高亮颜色", "Highlight Color"), selection: Binding(
                         get: {
                             Color(nsColor: NSColor(hex: settings.highlightColorHex) ?? .controlAccentColor)

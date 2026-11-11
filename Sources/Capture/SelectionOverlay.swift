@@ -301,7 +301,8 @@ final class SelectionOverlayView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         displayImage.draw(in: bounds)
 
-        NSColor.black.withAlphaComponent(AppSettings.shared.maskOpacity).setFill()
+        let maskColor = NSColor(hex: AppSettings.shared.maskColorHex) ?? .black
+        maskColor.withAlphaComponent(AppSettings.shared.maskOpacity).setFill()
         bounds.fill()
 
         if selection.width == 0,

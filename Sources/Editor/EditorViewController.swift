@@ -498,6 +498,7 @@ final class EditorViewController: NSViewController {
             shadow: settings.exportShadow,
             shadowBlur: CGFloat(settings.exportShadowBlur),
             shadowOpacity: settings.exportShadowOpacity,
+            shadowColorHex: settings.exportShadowColorHex,
             transparent: settings.exportTransparent
         )
     }

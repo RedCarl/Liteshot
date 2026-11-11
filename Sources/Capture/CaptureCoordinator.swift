@@ -229,6 +229,7 @@ final class CaptureCoordinator {
             shadow: settings.exportShadow,
             shadowBlur: CGFloat(settings.exportShadowBlur),
             shadowOpacity: settings.exportShadowOpacity,
+            shadowColorHex: settings.exportShadowColorHex,
             transparent: settings.exportTransparent
         )
         let output = EditorRenderer.render(image: image, annotations: [], options: options) ?? image
@@ -824,6 +825,7 @@ final class CaptureCoordinator {
             shadow: settings.exportShadow,
             shadowBlur: CGFloat(settings.exportShadowBlur),
             shadowOpacity: settings.exportShadowOpacity,
+            shadowColorHex: settings.exportShadowColorHex,
             transparent: settings.exportTransparent
         )
         let output = EditorRenderer.render(image: image, annotations: [], options: exportOptions) ?? image

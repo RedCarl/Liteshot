@@ -89,6 +89,14 @@ final class AppSettings: ObservableObject {
         didSet { store.set(sizeLabelAtTop, forKey: Keys.sizeLabelAtTop) }
     }
 
+    @Published var maskColorHex: String {
+        didSet { store.set(maskColorHex, forKey: Keys.maskColorHex) }
+    }
+
+    @Published var exportShadowColorHex: String {
+        didSet { store.set(exportShadowColorHex, forKey: Keys.exportShadowColorHex) }
+    }
+
     @Published var highlightColorHex: String {
         didSet { store.set(highlightColorHex, forKey: Keys.highlightColorHex) }
     }
@@ -156,6 +164,8 @@ final class AppSettings: ObservableObject {
         static let exportShadowBlur = "settings.exportShadowBlur"
         static let exportShadowOpacity = "settings.exportShadowOpacity"
         static let highlightColorHex = "settings.highlightColorHex"
+        static let maskColorHex = "settings.maskColorHex"
+        static let exportShadowColorHex = "settings.exportShadowColorHex"
         static let sizeLabelAtTop = "settings.sizeLabelAtTop"
         static let language = L10n.languageKey
         static let regionShortcut = "settings.shortcut.region"
@@ -186,6 +196,8 @@ final class AppSettings: ObservableObject {
         exportShadowBlur = defaults.object(forKey: Keys.exportShadowBlur) as? Double ?? 18
         exportShadowOpacity = defaults.object(forKey: Keys.exportShadowOpacity) as? Double ?? 0.45
         highlightColorHex = defaults.string(forKey: Keys.highlightColorHex) ?? "#0A84FF"
+        maskColorHex = defaults.string(forKey: Keys.maskColorHex) ?? "#000000"
+        exportShadowColorHex = defaults.string(forKey: Keys.exportShadowColorHex) ?? "#000000"
         sizeLabelAtTop = defaults.object(forKey: Keys.sizeLabelAtTop) as? Bool ?? false
         language = AppLanguage(rawValue: defaults.string(forKey: L10n.languageKey) ?? "") ?? .system
         regionShortcut = Self.loadShortcut(
