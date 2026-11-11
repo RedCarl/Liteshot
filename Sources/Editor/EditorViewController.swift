@@ -19,6 +19,7 @@ final class EditorViewController: NSViewController {
     private let redoButton = NSButton(title: "", target: nil, action: nil)
 
     private var currentTool: AnnotationTool = .select
+    private var sharePicker: NSSharingServicePicker?
 
     init(image: CGImage) {
         self.image = image
@@ -208,6 +209,15 @@ final class EditorViewController: NSViewController {
         spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
         spacer.translatesAutoresizingMaskIntoConstraints = false
         stack.addArrangedSubview(spacer)
+
+        let shareButton = NSButton()
+        configure(
+            button: shareButton,
+            symbol: "square.and.arrow.up",
+            tooltip: L10n.t("分享 / AirDrop", "Share / AirDrop"),
+            action: #selector(shareImage(_:))
+        )
+        stack.addArrangedSubview(shareButton)
 
         let copyButton = NSButton(title: L10n.t("复制", "Copy"), target: self, action: #selector(copyImage))
         copyButton.bezelStyle = .rounded
@@ -440,6 +450,29 @@ final class EditorViewController: NSViewController {
     @objc private func redo() {
         document.redo()
         canvas.select(id: nil)
+    }
+
+    @objc private func shareImage(_ sender: NSButton) {
+        guard let rendered = EditorRenderer.render(
+            image: image,
+            annotations: document.annotations,
+            options: exportOptions
+        ), let png = ImageEncoding.pngData(from: rendered) else {
+            return
+        }
+
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Liteshot-Share-\(UUID().uuidString.prefix(8)).png")
+        do {
+            try png.write(to: url)
+        } catch {
+            flashTitle(L10n.t("分享失败", "Share failed"))
+            return
+        }
+
+        let picker = NSSharingServicePicker(items: [url])
+        sharePicker = picker
+        picker.show(relativeTo: sender.bounds, of: sender, preferredEdge: .minY)
     }
 
     @objc private func copyImage() {
