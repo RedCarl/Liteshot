@@ -1,5 +1,8 @@
 # Liteshot
 
+[![Build](https://github.com/RedCarl/Liteshot/actions/workflows/build.yml/badge.svg)](https://github.com/RedCarl/Liteshot/actions/workflows/build.yml)
+[![Release](https://github.com/RedCarl/Liteshot/actions/workflows/release.yml/badge.svg)](https://github.com/RedCarl/Liteshot/actions/workflows/release.yml)
+
 轻量原生的 macOS 截图与标注工具：菜单栏常驻，专注区域 / 窗口 / 全屏截图、滚动截图与标注。
 原生 Swift + AppKit/SwiftUI，MIT 开源，本地构建自用，不依赖 App Store。
 
@@ -46,6 +49,19 @@ xcodebuild -project Liteshot.xcodeproj -scheme Liteshot \
 在 Xcode 里打开时，若想直接 Run，把 Signing 设为 **Sign to Run Locally** 即可。
 
 构建产物在 `DerivedData` 下，`scripts/build.sh` 会打印完整 `Liteshot.app` 路径。
+
+## 发布新版本（GitHub Actions）
+
+推送 `v*` 标签会触发 Release 工作流：在 macOS runner 上构建 **Universal（arm64 + x86_64）** 未签名 Release，打包 zip + SHA256，并自动创建 GitHub Release。
+
+```bash
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+- 版本号取自标签（`v0.2.0` → `0.2.0`），构建号用 Actions 的 run number。
+- 工作流：`.github/workflows/release.yml`；日常构建检查：`.github/workflows/build.yml`。
+- 产物未签名，首次打开需右键 → 打开，或 `xattr -dr com.apple.quarantine /Applications/Liteshot.app`；未签名版本不支持 Sparkle 自更新。
 
 ## 首次使用
 

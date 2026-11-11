@@ -1,0 +1,72 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Resolve version
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "BUILD_NUMBER=${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
+
+      - name: Generate project
+        run: xcodegen generate
+
+      - name: Build (unsigned, universal)
+        run: |
+          rm -rf dist
+          xcodebuild \
+            -project Liteshot.xcodeproj \
+            -scheme Liteshot \
+            -configuration Release \
+            -destination 'generic/platform=macOS' \
+            ARCHS="arm64 x86_64" ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            MARKETING_VERSION="$VERSION" \
+            CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
+            CONFIGURATION_BUILD_DIR="$PWD/dist" \
+            build
+
+      - name: Package
+        run: |
+          cd dist
+          ditto -c -k --keepParent Liteshot.app "Liteshot-$VERSION.zip"
+          shasum -a 256 "Liteshot-$VERSION.zip" > "Liteshot-$VERSION.zip.sha256"
+          ls -lh
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Liteshot ${{ env.VERSION }}
+          generate_release_notes: true
+          body: |
+            Liteshot ${{ env.VERSION }}（未签名构建 / unsigned build）
+
+            - 下载 `Liteshot-${{ env.VERSION }}.zip`，解压后把 `Liteshot.app` 拖到「应用程序」。
+            - 首次打开若被 Gatekeeper 拦截：右键 → 打开，或执行
+              `xattr -dr com.apple.quarantine /Applications/Liteshot.app`
+            - 首次截图需在「系统设置 → 隐私与安全性 → 屏幕与系统音频录制」中授权。
+            - 未签名版本无法使用 Sparkle 自更新。
+          files: |
+            dist/Liteshot-${{ env.VERSION }}.zip
+            dist/Liteshot-${{ env.VERSION }}.zip.sha256
