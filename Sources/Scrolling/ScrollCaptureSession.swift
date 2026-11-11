@@ -1,0 +1,303 @@
+import AppKit
+import CoreGraphics
+
+enum ScrollStrategy {
+    case vertical
+    case horizontal
+    case panorama
+}
+
+enum ScrollCaptureError: LocalizedError {
+    case noScreen
+    case captureFailed(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .noScreen:
+            return L10n.t("没有找到可截图的屏幕。", "No screen available for capture.")
+        case .captureFailed(let message):
+            return L10n.t("滚动截图失败：", "Scrolling capture failed: ") + message
+        }
+    }
+}
+
+/// 竖向滚动截图会话：按固定间隔截取选区，ScrollStitcher 拼接；HUD 提供完成/取消。
+@MainActor
+final class ScrollCaptureSession: NSObject {
+    private let screen: NSScreen
+    private let pixelRect: CGRect
+    private let strategy: ScrollStrategy
+    private let stitcher: any ScrollStitching
+
+    private var hudWindow: NSPanel?
+    private var borderWindow: NSWindow?
+    private var statusLabel: NSTextField?
+    private var captureTask: Task<Void, Never>?
+    private var isFinishing = false
+
+    var onFinish: ((CGImage) -> Void)?
+    var onCancel: (() -> Void)?
+
+    init(screen: NSScreen, pixelRect: CGRect, strategy: ScrollStrategy = .vertical) {
+        self.screen = screen
+        self.pixelRect = pixelRect
+        self.strategy = strategy
+
+        let width = Int(pixelRect.width)
+        let height = Int(pixelRect.height)
+        switch strategy {
+        case .vertical:
+            self.stitcher = ScrollStitcher(width: width, height: height, axis: .vertical)
+        case .horizontal:
+            self.stitcher = ScrollStitcher(width: width, height: height, axis: .horizontal)
+        case .panorama:
+            self.stitcher = PanoramaStitcher(width: width, height: height)
+        }
+        super.init()
+
+        stitcher.onUpdate = { [weak self] height in
+            self?.updateStatus(height)
+        }
+        stitcher.onWarning = { [weak self] message in
+            self?.statusLabel?.stringValue = message
+        }
+    }
+
+    func start() async throws {
+        guard ScreenPermission.isGranted else {
+            throw ScrollCaptureError.captureFailed(L10n.t("需要屏幕录制权限", "Screen recording permission is required"))
+        }
+        showBorder()
+        showHUD()
+        startPolling()
+    }
+
+    // MARK: - Capture
+
+    private func startPolling() {
+        captureTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(220))
+                guard let self, !self.isFinishing else { return }
+                await self.captureOnce()
+            }
+        }
+    }
+
+    private func captureOnce() async {
+        do {
+            let full = try await ScreenCaptureService.capture(
+                displayID: screen.displayID,
+                pixelWidth: Int(screen.pixelSize.width),
+                pixelHeight: Int(screen.pixelSize.height),
+                showsCursor: false
+            )
+            let bounds = CGRect(x: 0, y: 0, width: full.width, height: full.height)
+            let rect = pixelRect.intersection(bounds).integral
+            guard rect.width >= 1, rect.height >= 1, let cropped = full.cropping(to: rect) else {
+                return
+            }
+            stitcher.add(cropped)
+        } catch {
+            statusLabel?.stringValue = L10n.t("截取失败，重试中…", "Capture failed, retrying…")
+        }
+    }
+
+    // MARK: - UI
+
+    private func showHUD() {
+        let panel = NSPanel(
+            contentRect: NSRect(x: 0, y: 0, width: 320, height: 56),
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        panel.level = .floating
+        panel.sharingType = .none
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = true
+
+        let content = NSView()
+        content.wantsLayer = true
+        content.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.84).cgColor
+        content.layer?.cornerRadius = 12
+
+        let label = NSTextField(labelWithString: {
+            switch strategy {
+            case .vertical:
+                return L10n.t("竖向滚动开始拼接…", "Scroll vertically to start…")
+            case .horizontal:
+                return L10n.t("横向滚动开始拼接…", "Scroll horizontally to start…")
+            case .panorama:
+                return L10n.t("滚动页面开始全景拼接…", "Scroll in any direction to start…")
+            }
+        }())
+        label.font = .systemFont(ofSize: 12, weight: .medium)
+        label.textColor = .white
+        label.lineBreakMode = .byTruncatingTail
+        label.translatesAutoresizingMaskIntoConstraints = false
+        statusLabel = label
+
+        let finish = NSButton(title: L10n.t("完成", "Done"), target: self, action: #selector(finishTapped))
+        finish.title = L10n.t("完成", "Done")
+        finish.bezelStyle = .rounded
+        finish.controlSize = .small
+
+        let cancel = NSButton(title: L10n.t("取消", "Cancel"), target: self, action: #selector(cancelTapped))
+        cancel.bezelStyle = .rounded
+        cancel.controlSize = .small
+
+        let buttons = NSStackView(views: [finish, cancel])
+        buttons.orientation = .horizontal
+        buttons.spacing = 8
+
+        let stack = NSStackView(views: [label, buttons])
+        stack.orientation = .horizontal
+        stack.alignment = .centerY
+        stack.spacing = 12
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        content.addSubview(stack)
+
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 14),
+            stack.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -12),
+            stack.centerYAnchor.constraint(equalTo: content.centerYAnchor),
+            label.widthAnchor.constraint(greaterThanOrEqualToConstant: 150),
+        ])
+
+        panel.contentView = content
+        panel.setFrame(
+            NSRect(
+                x: screen.frame.midX - 160,
+                y: screen.frame.minY + 80,
+                width: 320,
+                height: 56
+            ),
+            display: true
+        )
+        panel.orderFrontRegardless()
+        hudWindow = panel
+    }
+
+    private func showBorder() {
+        let window = NSWindow(
+            contentRect: screen.frame,
+            styleMask: .borderless,
+            backing: .buffered,
+            defer: false
+        )
+        window.level = .floating
+        window.backgroundColor = .clear
+        window.isOpaque = false
+        window.ignoresMouseEvents = true
+        window.sharingType = .none
+        window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+
+        let scale = screen.backingScaleFactor
+        let localRect = CGRect(
+            x: pixelRect.minX / scale,
+            y: screen.frame.height - pixelRect.minY / scale - pixelRect.height / scale,
+            width: pixelRect.width / scale,
+            height: pixelRect.height / scale
+        )
+        let view = ScrollBorderView(
+            frame: NSRect(origin: .zero, size: screen.frame.size),
+            highlight: localRect
+        )
+        window.contentView = view
+        window.orderFrontRegardless()
+        borderWindow = window
+    }
+
+    private func updateStatus(_ length: Int) {
+        statusLabel?.stringValue = L10n.t("已拼接", "Stitched") + " \(length) px"
+        if stitcher.isFull {
+            finish()
+        }
+    }
+
+    private func closeWindows() {
+        hudWindow?.orderOut(nil)
+        hudWindow = nil
+        borderWindow?.orderOut(nil)
+        borderWindow = nil
+    }
+
+    // MARK: - Actions
+
+    @objc private func finishTapped() {
+        finish()
+    }
+
+    @objc private func cancelTapped() {
+        cancel()
+    }
+
+    private func finish() {
+        guard !isFinishing else { return }
+        isFinishing = true
+        captureTask?.cancel()
+        captureTask = nil
+
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(200))
+            closeWindows()
+
+            let scrolled = stitcher.stitchedLength > stitcher.baseLength + 4
+            guard scrolled, let image = stitcher.makeImage() else {
+                presentNoScrollAlert()
+                onCancel?()
+                return
+            }
+            onFinish?(image)
+        }
+    }
+
+    private func cancel() {
+        guard !isFinishing else { return }
+        isFinishing = true
+        captureTask?.cancel()
+        captureTask = nil
+        closeWindows()
+        onCancel?()
+    }
+
+    private func presentNoScrollAlert() {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = L10n.t("没有检测到滚动", "No Scrolling Detected")
+        alert.informativeText = L10n.t("请在选区内向下滚动页面，再点「完成」。如果滚得太快，可以放慢一点重试。", "Scroll inside the selected area, then click Done. If you scroll too fast, slow down and try again.")
+        alert.addButton(withTitle: L10n.t("好", "OK"))
+        NSApp.activate(ignoringOtherApps: true)
+        alert.runModal()
+    }
+}
+
+@MainActor
+private final class ScrollBorderView: NSView {
+    private let highlight: CGRect
+
+    init(frame: NSRect, highlight: CGRect) {
+        self.highlight = highlight
+        super.init(frame: frame)
+        wantsLayer = true
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override var isOpaque: Bool { false }
+
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.clear.setFill()
+        bounds.fill()
+
+        NSColor.controlAccentColor.setStroke()
+        let path = NSBezierPath(rect: highlight.insetBy(dx: -2, dy: -2))
+        path.lineWidth = 1.5
+        path.stroke()
+    }
+}
