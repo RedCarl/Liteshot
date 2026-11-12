@@ -575,14 +575,28 @@ final class SelectionOverlayView: NSView {
     }
 
     private func magnifierCenter(for cursor: CGPoint) -> CGPoint {
-        let radius: CGFloat = 62
+        let side: CGFloat = 150
         let margin: CGFloat = 14
-        var center = CGPoint(x: cursor.x + 120, y: cursor.y + 120)
-        if center.x + radius > bounds.width - margin { center.x = cursor.x - 120 }
-        if center.y + radius > bounds.height - margin { center.y = cursor.y - 120 }
-        center.x = min(max(center.x, radius + margin), bounds.width - radius - margin)
-        center.y = min(max(center.y, radius + margin), bounds.height - radius - margin)
-        return center
+        let offset: CGFloat = 18
+        let panelHeight: CGFloat = 64
+        let gap: CGFloat = 6
+
+        // 默认在鼠标右下方（视图坐标 y 向下为负）。
+        var lens = CGRect(
+            x: cursor.x + offset,
+            y: cursor.y - side - offset,
+            width: side,
+            height: side
+        )
+        if lens.maxX > bounds.width - margin {
+            lens.origin.x = cursor.x - side - offset
+        }
+        if lens.minY - panelHeight - gap < margin {
+            lens.origin.y = cursor.y + offset
+        }
+        lens.origin.x = min(max(lens.origin.x, margin), bounds.width - side - margin)
+        lens.origin.y = min(max(lens.origin.y, margin), bounds.height - side - margin)
+        return CGPoint(x: lens.midX, y: lens.midY)
     }
 
     private func animateMagnifierCenter(to cursor: CGPoint) {
@@ -626,7 +640,7 @@ final class SelectionOverlayView: NSView {
         }
 
         if let start = magnifierCenterStart, let target = magnifierCenterTarget {
-            let t = min(1, Date().timeIntervalSince(magnifierCenterStartTime) / 0.10)
+            let t = min(1, Date().timeIntervalSince(magnifierCenterStartTime) / 0.04)
             let eased = CGFloat(1 - pow(1 - t, 3))
             magnifierCenter = CGPoint(
                 x: start.x + (target.x - start.x) * eased,
@@ -2065,11 +2079,19 @@ final class SelectionOverlayView: NSView {
               bounds.contains(cursor),
               let color = currentColor else { return }
 
-        let radius: CGFloat = 62
+        let side: CGFloat = 150
         let margin: CGFloat = 14
+        let gap: CGFloat = 6
+        let panelHeight: CGFloat = 64
+        let radius: CGFloat = 14
         let center = magnifierCenter ?? magnifierCenter(for: cursor)
+        let lens = CGRect(
+            x: center.x - side / 2,
+            y: center.y - side / 2,
+            width: side,
+            height: side
+        )
 
-        let lens = CGRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2)
         let baseScale = bounds.width / CGFloat(image.width)
         let zoomScale = baseScale * 5
         let pixel = imagePoint(cursor)
@@ -2081,12 +2103,14 @@ final class SelectionOverlayView: NSView {
         context?.scaleBy(x: magnifierScale, y: magnifierScale)
         context?.translateBy(x: -center.x, y: -center.y)
 
+        // 圆角方形放大镜
         NSGraphicsContext.saveGraphicsState()
-        NSBezierPath(ovalIn: lens).addClip()
+        let lensPath = NSBezierPath(roundedRect: lens, xRadius: radius, yRadius: radius)
+        lensPath.addClip()
         NSColor.black.setFill()
         lens.fill()
 
-        let visiblePixels = (radius * 2) / zoomScale
+        let visiblePixels = side / zoomScale
         let cropRect = CGRect(
             x: pixel.x - visiblePixels / 2,
             y: pixel.y - visiblePixels / 2,
@@ -2101,59 +2125,62 @@ final class SelectionOverlayView: NSView {
         }
         NSGraphicsContext.restoreGraphicsState()
 
-        NSColor.white.withAlphaComponent(0.85).setStroke()
+        // 蓝色十字准星
+        (NSColor(hex: "#2F7CF6") ?? .controlAccentColor).setStroke()
         let cross = NSBezierPath()
-        cross.move(to: CGPoint(x: center.x - 10, y: center.y))
-        cross.line(to: CGPoint(x: center.x + 10, y: center.y))
-        cross.move(to: CGPoint(x: center.x, y: center.y - 10))
-        cross.line(to: CGPoint(x: center.x, y: center.y + 10))
-        cross.lineWidth = 1
+        cross.move(to: CGPoint(x: lens.midX, y: lens.minY))
+        cross.line(to: CGPoint(x: lens.midX, y: lens.maxY))
+        cross.move(to: CGPoint(x: lens.minX, y: lens.midY))
+        cross.line(to: CGPoint(x: lens.maxX, y: lens.midY))
+        cross.lineWidth = 1.5
         cross.stroke()
 
-        NSColor.black.withAlphaComponent(0.6).setStroke()
-        let outer = NSBezierPath(ovalIn: lens.insetBy(dx: -2, dy: -2))
+        // 外框
+        NSColor.black.withAlphaComponent(0.88).setStroke()
+        let outer = NSBezierPath(
+            roundedRect: lens.insetBy(dx: -1, dy: -1),
+            xRadius: radius + 1,
+            yRadius: radius + 1
+        )
         outer.lineWidth = 4
         outer.stroke()
 
-        NSColor.white.setStroke()
-        let inner = NSBezierPath(ovalIn: lens)
-        inner.lineWidth = 1.5
+        NSColor.white.withAlphaComponent(0.22).setStroke()
+        let inner = NSBezierPath(roundedRect: lens, xRadius: radius, yRadius: radius)
+        inner.lineWidth = 1
         inner.stroke()
 
-        let hex = color.hexString
-        let rgb = "RGB(\(Int(color.redComponent * 255)), \(Int(color.greenComponent * 255)), \(Int(color.blueComponent * 255)))"
-        let text = "\(hex)  \(rgb)"
+        // 下方信息面板：坐标 / 色值 / 按 C 复制
+        var panelY = lens.minY - panelHeight - gap
+        if panelY < margin {
+            panelY = lens.maxY + gap
+        }
+        let panel = CGRect(x: lens.minX, y: panelY, width: side, height: panelHeight)
+        NSColor.black.withAlphaComponent(0.82).setFill()
+        NSBezierPath(roundedRect: panel, xRadius: 8, yRadius: 8).fill()
+
+        let screenX = Int(cursor.x)
+        let screenY = Int(bounds.height - cursor.y)
+        let coord = L10n.t("坐标: (", "Coord: (") + "\(screenX), \(screenY))"
+        let hexText = L10n.t("色值: ", "Hex: ") + color.hexString.uppercased()
+        let hint = L10n.t("按 C 复制色号", "Press C to copy")
         let attributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium),
+            .font: NSFont.monospacedSystemFont(ofSize: 10.5, weight: .medium),
             .foregroundColor: NSColor.white,
         ]
-        let textSize = (text as NSString).size(withAttributes: attributes)
-        let labelWidth = textSize.width + 44
-        var labelY = lens.minY - 38
-        if labelY < margin {
-            labelY = lens.maxY + 10
-        }
-        let labelRect = CGRect(
-            x: min(max(center.x - labelWidth / 2, margin), bounds.width - labelWidth - margin),
-            y: labelY,
-            width: labelWidth,
-            height: 30
-        )
-        NSColor.black.withAlphaComponent(0.78).setFill()
-        NSBezierPath(roundedRect: labelRect, xRadius: 6, yRadius: 6).fill()
-
-        let swatch = CGRect(x: labelRect.minX + 8, y: labelRect.midY - 7, width: 14, height: 14)
-        color.setFill()
-        swatch.fill()
-        NSColor.white.withAlphaComponent(0.5).setStroke()
-        let swatchBorder = NSBezierPath(rect: swatch)
-        swatchBorder.lineWidth = 1
-        swatchBorder.stroke()
-
-        (text as NSString).draw(
-            at: CGPoint(x: labelRect.minX + 30, y: labelRect.midY - textSize.height / 2),
+        (coord as NSString).draw(
+            at: CGPoint(x: panel.minX + 10, y: panel.maxY - 18),
             withAttributes: attributes
         )
+        (hexText as NSString).draw(
+            at: CGPoint(x: panel.minX + 10, y: panel.maxY - 35),
+            withAttributes: attributes
+        )
+        (hint as NSString).draw(
+            at: CGPoint(x: panel.minX + 10, y: panel.maxY - 52),
+            withAttributes: attributes
+        )
+
         context?.restoreGState()
     }
 
