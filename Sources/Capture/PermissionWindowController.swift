@@ -5,6 +5,7 @@ import SwiftUI
 final class PermissionModel: ObservableObject {
     @Published var granted: Bool = ScreenPermission.isGranted
 
+    var requestPermission: () -> Void = {}
     var openSettings: () -> Void = {}
     var close: () -> Void = {}
     var startCapture: () -> Void = {}
@@ -40,8 +41,8 @@ struct PermissionView: View {
 
     private var helpText: String {
         L10n.t(
-            "Liteshot 需要屏幕录制权限才能截图。点击“授权屏幕截图”会弹出 macOS 权限对话框。\n\n可在“系统设置” -> “隐私与安全性” -> “屏幕录制与系统音频录制”中修改此设置。",
-            "Liteshot needs screen recording permission to capture the screen. Clicking “Authorize Screen Recording” shows the macOS permission dialog.\n\nYou can change this later in System Settings → Privacy & Security → Screen & System Audio Recording."
+            "Liteshot 需要屏幕录制权限才能截图。点击“授权屏幕截图”只会弹出 macOS 权限对话框，不会同时打开系统设置。\n\n如果之前拒绝过，系统不再弹框，点左下角“打开系统设置”手动勾选 Liteshot 即可。",
+            "Liteshot needs screen recording permission to capture the screen. Clicking “Authorize Screen Recording” only shows the macOS permission dialog; it does not open System Settings at the same time.\n\nIf you denied it before and macOS no longer shows the dialog, use “Open System Settings” at the bottom left and enable Liteshot there."
         )
     }
 
@@ -66,7 +67,7 @@ struct PermissionView: View {
                         if model.granted {
                             model.startCapture()
                         } else {
-                            model.openSettings()
+                            model.requestPermission()
                         }
                     }) {
                         Text(actionTitle)
@@ -120,6 +121,12 @@ struct PermissionView: View {
                 .buttonStyle(.link)
                 .font(.system(size: 12))
 
+                Button(L10n.t("打开系统设置", "Open System Settings")) {
+                    model.openSettings()
+                }
+                .buttonStyle(.link)
+                .font(.system(size: 12))
+
                 Spacer()
 
                 Toggle(L10n.t("授权后下次启动不显示", "Don't show again after authorizing"), isOn: $suppressOnLaunch)
@@ -164,8 +171,15 @@ final class PermissionWindowController: NSWindowController {
         window.contentViewController = hosting
         window.setContentSize(NSSize(width: 620, height: 520))
 
+        model.requestPermission = { [weak self] in
+            // 只弹系统授权框；不再同时打开系统设置，避免三个窗口叠在一起。
+            _ = ScreenPermission.request()
+            self?.model.refresh()
+        }
         model.openSettings = { [weak self] in
-            self?.openSystemSettings()
+            // 用户明确点“打开系统设置”时才打开设置。
+            ScreenPermission.openSystemSettings()
+            self?.model.refresh()
         }
         model.close = { [weak self] in
             self?.window?.close()
@@ -199,14 +213,5 @@ final class PermissionWindowController: NSWindowController {
         NSApp.activate(ignoringOtherApps: true)
         showWindow(nil)
         window?.makeKeyAndOrderFront(nil)
-    }
-
-    private func openSystemSettings() {
-        // 用户明确点击后才触发系统授权提示，App 启动/截图入口不主动弹系统窗口。
-        if !ScreenPermission.isGranted {
-            _ = ScreenPermission.request()
-        }
-        ScreenPermission.openSystemSettings()
-        model.refresh()
     }
 }
