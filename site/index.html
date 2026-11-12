@@ -1,0 +1,609 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Liteshot — 轻量的 macOS 截图与标注工具</title>
+<meta name="description" content="Liteshot 是一个菜单栏常驻的原生 macOS 截图工具：区域/窗口/滚动截图、内联标注、OCR、贴图。Swift + AppKit，开源 MIT。" />
+<meta name="theme-color" content="#0e0f10" media="(prefers-color-scheme: dark)" />
+<meta name="theme-color" content="#f6f6f7" media="(prefers-color-scheme: light)" />
+<link rel="icon" href="assets/icon.png" type="image/png" />
+<link rel="canonical" href="https://redcarl.github.io/Liteshot/" />
+
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://redcarl.github.io/Liteshot/" />
+<meta property="og:title" content="Liteshot — 轻量的 macOS 截图与标注工具" />
+<meta property="og:description" content="框选、标注、复制、保存，都在一个覆盖层里完成。" />
+<meta property="og:image" content="https://redcarl.github.io/Liteshot/assets/screenshot.jpg" />
+
+<style>
+:root {
+  --bg: #0e0f10;
+  --fg: #f3f4f5;
+  --muted: #a4a6ab;
+  --faint: #7b7e84;
+  --line: rgba(255, 255, 255, 0.11);
+  --line-soft: rgba(255, 255, 255, 0.06);
+  --panel: rgba(255, 255, 255, 0.04);
+  --panel-hi: rgba(255, 255, 255, 0.07);
+  --brand: #79a9ff;
+  --brand-ink: #06152e;
+  --brand-soft: rgba(121, 169, 255, 0.13);
+  --brand-line: rgba(121, 169, 255, 0.30);
+  --radius: 16px;
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI",
+    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f6f6f7;
+    --fg: #16171a;
+    --muted: #5b5d63;
+    --faint: #86888e;
+    --line: rgba(0, 0, 0, 0.12);
+    --line-soft: rgba(0, 0, 0, 0.07);
+    --panel: #ffffff;
+    --panel-hi: #fbfbfc;
+    --brand: #0d8f6b;
+    --brand-ink: #ffffff;
+    --brand-soft: rgba(13, 143, 107, 0.09);
+    --brand-line: rgba(13, 143, 107, 0.30);
+    color-scheme: light;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  /* 一层很淡的方向光，避免整页死灰 */
+  background-image:
+    radial-gradient(1000px 620px at 12% -10%, rgba(121, 169, 255, 0.13), transparent 62%),
+    radial-gradient(820px 520px at 96% 6%, rgba(96, 165, 250, 0.07), transparent 66%);
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+}
+
+@media (prefers-color-scheme: light) {
+  body {
+    background-image:
+      radial-gradient(1000px 620px at 12% -10%, rgba(10, 108, 255, 0.10), transparent 62%),
+      radial-gradient(820px 520px at 96% 6%, rgba(59, 130, 246, 0.07), transparent 66%);
+  }
+}
+
+a { color: inherit; text-decoration: none; }
+img { max-width: 100%; height: auto; display: block; }
+
+:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 3px;
+  border-radius: 8px;
+}
+
+.wrap {
+  width: 100%;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 0 32px;
+}
+
+/* ---------- 顶栏 ---------- */
+
+.nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  height: 76px;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 15.5px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.brand img {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: #f3f4f5;
+  box-shadow: 0 0 0 1px var(--line);
+}
+
+.nav-link {
+  font-size: 14px;
+  color: var(--muted);
+  transition: color 0.18s ease;
+}
+.nav-link:hover { color: var(--fg); }
+
+/* ---------- 首屏：左文字 / 右预览 ---------- */
+
+.hero {
+  display: grid;
+  grid-template-columns: 0.92fr 1.08fr;
+  align-items: center;
+  gap: 52px;
+  padding: 40px 0 64px;
+}
+
+.eyebrow {
+  display: inline-block;
+  margin: 0 0 18px;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(36px, 4.6vw, 58px);
+  line-height: 1.1;
+  letter-spacing: -0.035em;
+  font-weight: 700;
+}
+
+h1 em {
+  font-style: normal;
+  color: var(--brand);
+}
+
+.lede {
+  margin: 20px 0 0;
+  max-width: 34em;
+  font-size: clamp(15px, 1.4vw, 17px);
+  line-height: 1.75;
+  color: var(--muted);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 30px;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  height: 48px;
+  padding: 0 24px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  font-size: 15px;
+  font-weight: 600;
+  font-family: inherit;
+  white-space: nowrap;
+  transition: transform 0.18s ease, background 0.18s ease, border-color 0.18s ease;
+}
+
+.btn svg { width: 17px; height: 17px; }
+
+.btn-primary {
+  background: var(--brand);
+  color: var(--brand-ink);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28);
+}
+.btn-primary:hover { transform: translateY(-1px); }
+
+.btn-ghost {
+  background: var(--panel);
+  border-color: var(--line);
+  color: var(--fg);
+}
+.btn-ghost:hover { background: var(--panel-hi); transform: translateY(-1px); }
+
+.meta {
+  margin: 16px 0 0;
+  font-size: 12.5px;
+  color: var(--faint);
+}
+
+/* 预览图 */
+.shot {
+  position: relative;
+  margin: 0;
+}
+
+.shot::before {
+  content: "";
+  position: absolute;
+  inset: -28px -20px -36px;
+  background: radial-gradient(60% 60% at 50% 40%, var(--brand-soft), transparent 72%);
+  filter: blur(22px);
+  z-index: 0;
+  pointer-events: none;
+}
+
+.shot img {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  box-shadow:
+    0 40px 70px -34px rgba(0, 0, 0, 0.85),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+/* ---------- 下载 ---------- */
+
+.download {
+  padding: 56px 0 40px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.download h2 {
+  margin: 0;
+  font-size: 22px;
+  letter-spacing: -0.02em;
+  font-weight: 650;
+}
+
+.sub {
+  margin: 8px 0 24px;
+  font-size: 13.5px;
+  color: var(--faint);
+}
+
+.platforms {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.plat {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 20px 22px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  background: var(--panel);
+  transition: border-color 0.2s ease, background 0.2s ease, transform 0.2s ease;
+}
+
+.plat:hover {
+  border-color: var(--line);
+  background: var(--panel-hi);
+  transform: translateY(-2px);
+}
+
+.plat.rec {
+  border-color: var(--brand-line);
+  background: linear-gradient(180deg, var(--brand-soft), transparent 70%), var(--panel);
+}
+
+.plat .os {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.plat .os svg { width: 17px; height: 17px; color: var(--muted); }
+.plat.rec .os svg { color: var(--brand); }
+
+.plat .file {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--faint);
+  word-break: break-all;
+}
+
+.plat .size {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--faint);
+}
+
+.plat .tag {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: var(--brand);
+  color: var(--brand-ink);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.hint {
+  margin: 18px 0 0;
+  font-size: 12.5px;
+  color: var(--faint);
+}
+
+.hint a {
+  color: var(--muted);
+  border-bottom: 1px solid var(--line);
+}
+.hint a:hover { color: var(--fg); }
+
+.hint + .hint { margin-top: 6px; }
+
+.linkbtn {
+  border: 0;
+  padding: 0;
+  background: none;
+  font: inherit;
+  color: var(--muted);
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+}
+
+.linkbtn:hover { color: var(--fg); }
+
+footer {
+  padding: 28px 0 48px;
+  font-size: 12px;
+  color: var(--faint);
+}
+
+footer .row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  border-top: 1px solid var(--line-soft);
+  padding-top: 20px;
+}
+
+footer a { color: var(--muted); }
+footer a:hover { color: var(--fg); }
+
+/* ---------- 响应式 ---------- */
+
+@media (max-width: 940px) {
+  .hero {
+    grid-template-columns: 1fr;
+    gap: 36px;
+    padding: 32px 0 56px;
+  }
+  .shot { order: 2; }
+  .platforms { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 520px) {
+  .wrap { padding: 0 20px; }
+  .nav { height: 64px; }
+  .actions .btn { flex: 1 1 100%; }
+}
+</style>
+</head>
+
+<body>
+<div class="wrap">
+
+  <header class="nav">
+    <a class="brand" href="#top">
+      <img src="assets/icon.png" width="28" height="28" alt="" />
+      Liteshot
+    </a>
+    <a class="nav-link" href="https://github.com/RedCarl/Liteshot" target="_blank" rel="noopener">GitHub ↗</a>
+  </header>
+
+  <main id="top">
+    <section class="hero">
+      <div class="copy">
+        <p class="eyebrow">Swift · AppKit · MIT</p>
+
+        <h1>截图，<br />也可以<em>很轻</em>。</h1>
+
+        <p class="lede">
+          一个菜单栏常驻的 macOS 截图工具。区域、窗口、滚动截图，框选后直接标注、复制、保存，
+          没有第二个编辑器窗口，也没有多余弹窗。
+        </p>
+
+        <div class="actions">
+          <a class="btn btn-primary" id="hero-dl" href="https://github.com/RedCarl/Liteshot/releases/latest" rel="noopener">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><path d="m7.5 10.5 4.5 4.5 4.5-4.5"/><path d="M4 20h16"/></svg>
+            <span id="hero-dl-label">下载 macOS 版</span>
+          </a>
+          <a class="btn btn-ghost" href="https://github.com/RedCarl/Liteshot" target="_blank" rel="noopener">
+            <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+            源代码
+          </a>
+        </div>
+
+        <p class="meta" id="meta">macOS 14+ · Apple 芯片与 Intel · 免费开源</p>
+      </div>
+
+      <figure class="shot">
+        <img src="assets/screenshot.jpg" width="1200" height="1021"
+             alt="Liteshot 截图界面：选区、顶部悬浮模式条与内联工具条" />
+      </figure>
+    </section>
+
+    <section class="download" id="download">
+      <h2>下载</h2>
+      <p class="sub" id="sub">macOS 14+，Apple 芯片与 Intel 通用；新版本可在应用内检查并下载。</p>
+
+      <div class="platforms">
+        <a class="plat" data-os="mac" data-asset="mac" href="https://github.com/RedCarl/Liteshot/releases/latest" rel="noopener">
+          <span class="tag" data-rec hidden>推荐</span>
+          <span class="os">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16.4 12.7c0-2.3 1.9-3.4 2-3.5-1.1-1.6-2.8-1.8-3.4-1.8-1.4-.1-2.7.8-3.4.8-.7 0-1.8-.8-3-.8-1.5 0-3 .9-3.8 2.3-1.6 2.8-.4 7 1.2 9.3.8 1.1 1.7 2.4 2.9 2.3 1.2 0 1.6-.7 3-.7s1.8.7 3 .7c1.2 0 2-1.1 2.8-2.2.9-1.3 1.3-2.5 1.3-2.6-.1 0-2.6-1-2.6-3.8ZM14.2 5.7c.6-.8 1.1-1.9 1-3-.9 0-2 .6-2.7 1.4-.6.7-1.1 1.8-1 2.9 1 .1 2-.5 2.7-1.3Z"/></svg>
+            macOS · 通用
+          </span>
+          <span class="file" data-file="mac">macOS 14+ · Apple 芯片与 Intel</span>
+          <span class="size" data-size="mac"></span>
+        </a>
+      </div>
+
+      <p class="hint">
+        <span id="dl-route">下载经由 gh-proxy.com 镜像加速</span> ·
+        <button class="linkbtn" id="mode" type="button">改用 GitHub 直连</button>
+      </p>
+
+      <p class="hint">
+        下载的是 zip（里面就是 Liteshot.app），解压后拖进「应用程序」。
+        首次打开若提示「已损坏」，在 Finder 里右键 → 打开。
+        全部历史版本见 <a href="https://github.com/RedCarl/Liteshot/releases" target="_blank" rel="noopener">GitHub Releases</a>。
+      </p>
+    </section>
+  </main>
+
+  <footer>
+    <div class="row">
+      <span>© 2026 Liteshot · MIT License</span>
+      <span>截图内容只在本机处理，OCR 使用本地 Vision。</span>
+    </div>
+  </footer>
+
+</div>
+
+<script>
+(function () {
+  var REPO = "RedCarl/Liteshot";
+  var LATEST = "https://github.com/" + REPO + "/releases/latest";
+
+  /* 下载加速：只给 /releases/download/ 的附件直链加前缀，
+     releases 页面之类的 HTML 链接保持原样。 */
+  var MIRROR = "https://gh-proxy.com/";
+  var mode = "mirror";
+  var links = [];
+
+  function accel(url) {
+    return /\/releases\/download\//.test(url) ? MIRROR + url : url;
+  }
+
+  function bind(el, url) {
+    if (!el || !url) return;
+    for (var i = 0; i < links.length; i++) {
+      if (links[i].el === el) {
+        links[i].direct = url;
+        el.href = mode === "mirror" ? accel(url) : url;
+        return;
+      }
+    }
+    links.push({ el: el, direct: url });
+    el.href = mode === "mirror" ? accel(url) : url;
+  }
+
+  function applyMode() {
+    links.forEach(function (l) {
+      l.el.href = mode === "mirror" ? accel(l.direct) : l.direct;
+    });
+    var btn = document.getElementById("mode");
+    if (btn) btn.textContent = mode === "mirror" ? "改用 GitHub 直连" : "改用镜像加速";
+    var route = document.getElementById("dl-route");
+    if (route) route.textContent = mode === "mirror" ? "下载经由 gh-proxy.com 镜像加速" : "下载直连 GitHub";
+  }
+
+  var modeBtn = document.getElementById("mode");
+  if (modeBtn) {
+    modeBtn.addEventListener("click", function () {
+      mode = mode === "mirror" ? "direct" : "mirror";
+      applyMode();
+    });
+  }
+
+  function size(bytes) {
+    if (!bytes) return "";
+    return (bytes / 1048576).toFixed(2) + " MB";
+  }
+
+  function pick(assets, re) {
+    for (var i = 0; i < assets.length; i++) if (re.test(assets[i].name)) return assets[i];
+    return null;
+  }
+
+  function ua() {
+    var s = navigator.userAgent || "";
+    if (/Windows NT/i.test(s)) return "windows";
+    if (/Mac OS X|Macintosh/i.test(s) && !/iPhone|iPad/i.test(s)) return "mac";
+    return "";
+  }
+
+  var guess = ua();
+
+  // 先把「推荐」标到可能的系统上；拿到架构信息后再细调一次。
+  function mark(os) {
+    document.querySelectorAll(".plat").forEach(function (el) {
+      var hit = el.dataset.os === os;
+      el.classList.toggle("rec", hit);
+      var tag = el.querySelector("[data-rec]");
+      if (tag) tag.hidden = !hit;
+    });
+  }
+  mark("mac");
+
+  if (guess === "mac" && navigator.userAgentData && navigator.userAgentData.getHighEntropyValues) {
+    navigator.userAgentData.getHighEntropyValues(["architecture"]).then(function (v) {
+      mark("mac");
+    }).catch(function () {});
+  }
+
+  function fill(key, asset) {
+    if (!asset) return;
+    var url = asset.browser_download_url;
+    document.querySelectorAll('[data-asset="' + key + '"]').forEach(function (a) {
+      bind(a, url);
+    });
+    var name = document.querySelector('[data-file="' + key + '"]');
+    if (name) name.textContent = asset.name;
+    var s = document.querySelector('[data-size="' + key + '"]');
+    if (s) s.textContent = size(asset.size);
+  }
+
+  fetch("https://api.github.com/repos/" + REPO + "/releases/latest", {
+    headers: { Accept: "application/vnd.github+json" }
+  })
+    .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(function (rel) {
+      var a = rel.assets || [];
+      var mac = pick(a, /Liteshot-.*\.zip$/i) || pick(a, /\.zip$/i);
+
+      fill("mac", mac);
+
+      if (rel.tag_name) {
+        document.getElementById("meta").textContent =
+          rel.tag_name + " · macOS 14+ · Apple 芯片与 Intel · 免费开源";
+        document.getElementById("sub").textContent =
+          rel.tag_name + " · 下载后解压，把 Liteshot.app 拖进「应用程序」。";
+
+        var hero = document.getElementById("hero-dl");
+        var label = document.getElementById("hero-dl-label");
+        if (mac) {
+          bind(hero, mac.browser_download_url);
+          label.textContent = "下载 macOS 版";
+        } else {
+          bind(hero, rel.html_url || LATEST);
+          label.textContent = "前往 Releases";
+        }
+      }
+    })
+    .catch(function () {
+      document.getElementById("sub").textContent =
+        "版本信息获取失败，可直接前往 Releases 下载。";
+    });
+})();
+</script>
+</body>
+</html>

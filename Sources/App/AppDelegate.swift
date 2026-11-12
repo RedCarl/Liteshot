@@ -18,6 +18,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
            !UserDefaults.standard.bool(forKey: "settings.permissionSuppressOnLaunch") {
             PermissionWindowController.shared.show()
         }
+
+        // 启动后静默检查一次更新；没有新版本不打扰用户。
+        DispatchQueue.main.asyncAfter(deadline: .now() + 8) {
+            UpdateChecker.shared.check(manual: false)
+        }
     }
 
     private func setupMainMenu() {
@@ -353,6 +358,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func handleDebugArguments() {
         #if DEBUG
+        if CommandLine.arguments.contains("--update-demo") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                let release = GitHubRelease(
+                    tagName: "v0.3.99",
+                    htmlURL: URL(string: "https://github.com/RedCarl/Liteshot/releases")!,
+                    body: "## 更新内容\n- 内联工具条与悬浮模式条\n- 权限引导页\n- 更新下载走 gh-proxy 加速",
+                    assets: [
+                        GitHubRelease.Asset(
+                            name: "Liteshot-0.3.28.zip",
+                            downloadURL: URL(string: "https://github.com/RedCarl/Liteshot/releases/download/v0.3.28/Liteshot-0.3.28.zip")!
+                        )
+                    ]
+                )
+                UpdateWindowController.show(release: release, currentVersion: "0.3.37")
+            }
+        }
+
         if CommandLine.arguments.contains("--open-menu") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
                 self?.statusItem?.button?.performClick(nil)

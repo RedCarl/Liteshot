@@ -1,6 +1,6 @@
 import AppKit
 
-private struct GitHubRelease: Decodable {
+struct GitHubRelease: Decodable {
     struct Asset: Decodable {
         let name: String
         let downloadURL: URL
@@ -26,6 +26,10 @@ private struct GitHubRelease: Decodable {
     var version: String {
         tagName.hasPrefix("v") ? String(tagName.dropFirst()) : tagName
     }
+
+    var zipAsset: Asset? {
+        assets.first { $0.name.lowercased().hasSuffix(".zip") }
+    }
 }
 
 @MainActor
@@ -39,7 +43,7 @@ final class UpdateChecker {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0"
     }
 
-    func check() {
+    func check(manual: Bool = true) {
         guard !isChecking else { return }
         isChecking = true
 
@@ -48,20 +52,20 @@ final class UpdateChecker {
             do {
                 let release = try await fetchLatestRelease()
                 if Self.isNewer(release.version, than: currentVersion) {
-                    presentUpdate(release)
-                } else {
-                    presentUpToDate()
+                    UpdateWindowController.show(release: release, currentVersion: currentVersion)
+                } else if manual {
+                    presentInfo(
+                        title: L10n.t("已是最新版本", "You're Up to Date"),
+                        message: L10n.t("当前版本 \(currentVersion)。", "You are running Liteshot \(currentVersion).")
+                    )
                 }
-            } catch UpdateError.noReleases {
-                presentInfo(
-                    title: L10n.t("暂无发布版本", "No Releases Yet"),
-                    message: L10n.t("GitHub 上还没有正式发布。", "There are no published releases on GitHub yet.")
-                )
             } catch {
-                presentInfo(
-                    title: L10n.t("检查更新失败", "Update Check Failed"),
-                    message: error.localizedDescription
-                )
+                if manual {
+                    presentInfo(
+                        title: L10n.t("检查更新失败", "Update Check Failed"),
+                        message: error.localizedDescription
+                    )
+                }
             }
         }
     }
@@ -93,32 +97,6 @@ final class UpdateChecker {
         return try JSONDecoder().decode(GitHubRelease.self, from: data)
     }
 
-    private func presentUpdate(_ release: GitHubRelease) {
-        let notes = release.body?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let preview = notes.count > 1200 ? String(notes.prefix(1200)) + "…" : notes
-
-        let alert = NSAlert()
-        alert.alertStyle = .informational
-        alert.messageText = L10n.t("发现新版本 ", "New version available: ") + release.version
-        alert.informativeText = preview.isEmpty
-            ? L10n.t("当前版本 \(currentVersion)，可下载最新版本。", "You are on \(currentVersion). A newer version is available.")
-            : L10n.t("当前版本 \(currentVersion)。\n\n", "You are on \(currentVersion).\n\n") + preview
-        alert.addButton(withTitle: L10n.t("下载", "Download"))
-        alert.addButton(withTitle: L10n.t("稍后", "Later"))
-
-        NSApp.activate(ignoringOtherApps: true)
-        if alert.runModal() == .alertFirstButtonReturn {
-            NSWorkspace.shared.open(release.htmlURL)
-        }
-    }
-
-    private func presentUpToDate() {
-        presentInfo(
-            title: L10n.t("已是最新版本", "You're Up to Date"),
-            message: L10n.t("当前版本 \(currentVersion)。", "You are running Liteshot \(currentVersion).")
-        )
-    }
-
     private func presentInfo(title: String, message: String) {
         let alert = NSAlert()
         alert.alertStyle = .informational
@@ -130,7 +108,7 @@ final class UpdateChecker {
     }
 }
 
-private enum UpdateError: LocalizedError {
+enum UpdateError: LocalizedError {
     case invalidURL
     case invalidResponse
     case noReleases

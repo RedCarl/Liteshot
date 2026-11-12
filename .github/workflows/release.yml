@@ -56,6 +56,8 @@ jobs:
       - name: Package
         run: |
           cd dist
+          # 构建产物就是 Liteshot.app；GitHub Release 只能上传单个文件，
+          # 所以用 zip 把 .app 包一层（不是 dmg / 安装器）。
           ditto -c -k --keepParent Liteshot.app "Liteshot-$VERSION.zip"
           shasum -a 256 "Liteshot-$VERSION.zip" > "Liteshot-$VERSION.zip.sha256"
           ls -lh
@@ -68,11 +70,12 @@ jobs:
           body: |
             Liteshot ${{ env.VERSION }}（ad-hoc 签名，未公证 / ad-hoc signed, not notarized）
 
-            - 下载 `Liteshot-${{ env.VERSION }}.zip`，解压后把 `Liteshot.app` 拖到「应用程序」。
+            - 构建产物就是 `Liteshot.app`；GitHub Release 只能上传单个文件，所以用 zip 包了一层（解压即见 `Liteshot.app`，不是 dmg / 安装器）。
+            - 解压后把 `Liteshot.app` 拖进「应用程序」。
             - 首次打开若被 Gatekeeper 拦截：右键 → 打开，或执行
               `xattr -dr com.apple.quarantine /Applications/Liteshot.app`
             - 首次截图需在「系统设置 → 隐私与安全性 → 屏幕与系统音频录制」中授权。
-            - 更新方式：下载新版 zip 后手动替换 App，不做自动安装。
+            - 应用内「检查更新…」会直接下载新版；也可以从官网页面下载。
           files: |
             dist/Liteshot-${{ env.VERSION }}.zip
             dist/Liteshot-${{ env.VERSION }}.zip.sha256

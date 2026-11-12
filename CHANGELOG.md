@@ -1,5 +1,14 @@
 # 更新记录
 
+## 0.3.37
+
+- 新增官网落地页 `site/`（GitHub Pages），布局参考 TinyMusic：直接下载最新版 zip，下载走 gh-proxy.com 加速，可切换 GitHub 直连
+- 应用内更新窗口：检查 GitHub 最新 Release，显示更新说明；「下载更新」直接下载 zip 到 Downloads（gh-proxy 加速，失败自动回退 GitHub 直连）
+- 启动 8 秒后静默检查更新，有新版本才弹窗，不打扰
+- README 改为纯用户文档（是什么 / 能做什么 / 下载安装 / 常见问题 / 免责声明），开发内容不再写进 README
+- 构建产物仍是 `Liteshot.app`；GitHub Release 只上传 zip 包一层，不是 dmg / 安装器
+- 发布流程补充 Pages 部署工作流，发布说明同步
+
 ## 0.3.36
 
 - 权限窗口改成 Longshot 式引导页：大图标 + 标题/功能副标题 + 红色「授权屏幕截图」按钮 + 灰色「?」说明浮层
