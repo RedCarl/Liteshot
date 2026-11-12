@@ -89,6 +89,8 @@ final class SelectionOverlayView: NSView {
     private var moveButton: ToolbarIconButton?
     private var chrome: SelectionChromeView?
     private var styleBar: CaptureStyleBarView?
+    private var toolStyleBar: CaptureToolStyleBarView?
+    private var hoverTip: HoverTipView?
     private var selectionMoveMode = false
     private var captureCornerRadius: CGFloat = 0
     private var captureShadow = false
@@ -618,10 +620,15 @@ final class SelectionOverlayView: NSView {
 
     private static let palette: [(hex: String, name: String)] = [
         ("#FF3B30", "红"),
+        ("#FF9500", "橙"),
         ("#FFD60A", "黄"),
         ("#34C759", "绿"),
+        ("#32ADE6", "青"),
         ("#0A84FF", "蓝"),
+        ("#AF52DE", "紫"),
+        ("#FF2D55", "粉"),
         ("#FFFFFF", "白"),
+        ("#8E8E93", "灰"),
         ("#000000", "黑"),
     ]
 
@@ -685,6 +692,8 @@ final class SelectionOverlayView: NSView {
 
         buildStyleBar(for: viewRect)
         buildToolbar(for: viewRect)
+        buildToolStyleBar()
+        updateToolStyleBar()
         updateUndoState()
 
         window?.invalidateCursorRects(for: self)
@@ -692,6 +701,174 @@ final class SelectionOverlayView: NSView {
         NSCursor.arrow.set()
         window?.makeFirstResponder(canvas)
         needsDisplay = true
+    }
+
+    private var currentStyleTool: AnnotationTool? {
+        guard let tool = canvas?.tool else { return nil }
+        switch tool {
+        case .rectangle, .ellipse, .arrow, .pencil, .highlight, .mosaic, .text:
+            return tool
+        default:
+            return nil
+        }
+    }
+
+    private func buildToolStyleBar() {
+        toolStyleBar?.removeFromSuperview()
+        let bar = CaptureToolStyleBarView(frame: .zero)
+        bar.onWidthChanged = { [weak self] value in
+            self?.applyToolWidth(value)
+        }
+        bar.onColorTapped = { [weak self] button in
+            self?.showColorMenu(for: button)
+        }
+        addSubview(bar)
+        toolStyleBar = bar
+        bar.isHidden = true
+    }
+
+    private func updateToolStyleBar() {
+        guard let bar = toolStyleBar else { return }
+        guard let tool = currentStyleTool else {
+            bar.isHidden = true
+            return
+        }
+        bar.update(tool: tool, style: ToolStyleStore.style(for: tool))
+        bar.isHidden = false
+        positionToolStyleBar()
+    }
+
+    private func positionToolStyleBar() {
+        guard let bar = toolStyleBar, let actionBar else { return }
+        let width: CGFloat = 248
+        let height: CGFloat = 34
+        bar.frame.size = CGSize(width: width, height: height)
+        var x = actionBar.frame.minX
+        x = min(max(x, 8), bounds.width - width - 8)
+        var y = actionBar.frame.minY - height - 6
+        if y < safeBottomEdge + 4 {
+            y = actionBar.frame.maxY + 6
+        }
+        y = min(max(y, safeBottomEdge + 4), safeTopEdge - height - 4)
+        bar.frame.origin = CGPoint(x: x, y: y)
+    }
+
+    private func applyToolWidth(_ value: CGFloat) {
+        guard let tool = currentStyleTool else { return }
+        var style = ToolStyleStore.style(for: tool)
+        if tool == .text {
+            style.fontSize = Double(value)
+        } else {
+            style.lineWidth = Double(value)
+        }
+        ToolStyleStore.save(style, for: tool)
+        canvas?.currentStyle = style
+        toolStyleBar?.update(tool: tool, style: style)
+    }
+
+    private func showColorMenu(for button: NSButton) {
+        guard let tool = currentStyleTool else { return }
+        let current = ToolStyleStore.style(for: tool).colorHex
+        let menu = NSMenu()
+        for entry in Self.palette {
+            let item = NSMenuItem(
+                title: entry.name,
+                action: #selector(menuColorPicked(_:)),
+                keyEquivalent: ""
+            )
+            item.target = self
+            item.representedObject = entry.hex
+            item.image = colorSwatchImage(hex: entry.hex)
+            item.state = entry.hex.caseInsensitiveCompare(current) == .orderedSame ? .on : .off
+            menu.addItem(item)
+        }
+        menu.popUp(
+            positioning: nil,
+            at: NSPoint(x: 0, y: button.bounds.height + 6),
+            in: button
+        )
+    }
+
+    @objc private func menuColorPicked(_ sender: NSMenuItem) {
+        guard let hex = sender.representedObject as? String,
+              let tool = currentStyleTool else { return }
+        var style = ToolStyleStore.style(for: tool)
+        style.colorHex = hex
+        ToolStyleStore.save(style, for: tool)
+        canvas?.currentStyle = style
+        toolStyleBar?.update(tool: tool, style: style)
+    }
+
+    private func colorSwatchImage(hex: String) -> NSImage {
+        let size = NSSize(width: 16, height: 16)
+        let image = NSImage(size: size)
+        image.lockFocus()
+        let rect = NSRect(x: 2, y: 2, width: 12, height: 12)
+        let path = NSBezierPath(roundedRect: rect, xRadius: 3, yRadius: 3)
+        (NSColor(hex: hex) ?? .black).setFill()
+        path.fill()
+        NSColor.white.withAlphaComponent(0.7).setStroke()
+        path.lineWidth = 1
+        path.stroke()
+        image.unlockFocus()
+        return image
+    }
+
+    private func toolTip(for tool: AnnotationTool) -> String {
+        switch tool {
+        case .select: return L10n.t("选择 / 编辑标注", "Select / edit annotations")
+        case .rectangle: return L10n.t("矩形标注", "Rectangle")
+        case .ellipse: return L10n.t("椭圆标注", "Ellipse")
+        case .arrow: return L10n.t("箭头标注", "Arrow")
+        case .pencil: return L10n.t("自由画笔", "Freehand")
+        case .highlight: return L10n.t("高亮笔", "Highlighter")
+        case .mosaic: return L10n.t("马赛克", "Mosaic")
+        case .counter: return L10n.t("序号标记", "Counter")
+        case .text: return L10n.t("文字标注", "Text")
+        default: return tool.title
+        }
+    }
+
+    private func tooltipInfo(at point: CGPoint) -> (String, CGRect)? {
+        for container in [actionBar, styleBar, toolStyleBar] {
+            guard let container, !container.isHidden else { continue }
+            for view in container.subviews {
+                guard let tip = view.toolTip, !tip.isEmpty else { continue }
+                let frame = view.convert(view.bounds, to: self)
+                if frame.contains(point) {
+                    return (tip, frame)
+                }
+            }
+        }
+        return nil
+    }
+
+    private func updateHoverTip(at point: CGPoint) {
+        guard let (text, frame) = tooltipInfo(at: point) else {
+            hoverTip?.isHidden = true
+            return
+        }
+        let tip: HoverTipView
+        if let existing = hoverTip {
+            tip = existing
+        } else {
+            tip = HoverTipView(frame: .zero)
+            addSubview(tip)
+            hoverTip = tip
+        }
+        addSubview(tip, positioned: .above, relativeTo: nil)
+        tip.text = text
+        let size = tip.preferredSize(for: text)
+        var x = frame.midX - size.width / 2
+        x = min(max(x, 8), bounds.width - size.width - 8)
+        var y = frame.maxY + 6
+        if y + size.height > bounds.height - 4 {
+            y = frame.minY - size.height - 6
+        }
+        y = min(max(y, 4), bounds.height - size.height - 4)
+        tip.frame = CGRect(x: x, y: y, width: size.width, height: size.height)
+        tip.isHidden = false
+        tip.needsDisplay = true
     }
 
     private func buildToolbar(for selection: CGRect) {
@@ -706,8 +883,6 @@ final class SelectionOverlayView: NSView {
             .tool(.mosaic),
             .tool(.counter),
             .tool(.text),
-            .separator,
-            .colors,
             .separator,
             .undo,
             .redo,
@@ -746,10 +921,10 @@ final class SelectionOverlayView: NSView {
 
         let bar = ToolbarBarView(frame: .zero)
         bar.wantsLayer = true
-        bar.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.84).cgColor
+        bar.layer?.backgroundColor = NSColor(calibratedWhite: 0.22, alpha: 0.94).cgColor
         bar.layer?.cornerRadius = 8
         bar.layer?.borderWidth = 1
-        bar.layer?.borderColor = NSColor.white.withAlphaComponent(0.12).cgColor
+        bar.layer?.borderColor = NSColor.white.withAlphaComponent(0.16).cgColor
 
         var x = padding
         for entry in entries {
@@ -775,7 +950,7 @@ final class SelectionOverlayView: NSView {
                 button.contentTintColor = .white
                 button.wantsLayer = true
                 button.layer?.cornerRadius = 4
-                button.toolTip = tool.title
+                button.toolTip = toolTip(for: tool)
                 button.frame = CGRect(x: x, y: padding, width: w, height: buttonHeight)
                 button.baseBackground = tool == .select
                     ? NSColor.white.withAlphaComponent(0.18)
@@ -967,6 +1142,7 @@ final class SelectionOverlayView: NSView {
         canvas?.isHidden = true
         actionBar?.isHidden = true
         styleBar?.isHidden = true
+        toolStyleBar?.isHidden = true
         sizeLabel?.isHidden = true
         needsDisplay = true
     }
@@ -983,6 +1159,7 @@ final class SelectionOverlayView: NSView {
             canvas?.isHidden = false
             actionBar?.isHidden = false
             styleBar?.isHidden = false
+            toolStyleBar?.isHidden = false
             sizeLabel?.isHidden = false
             needsDisplay = true
             return
@@ -995,6 +1172,7 @@ final class SelectionOverlayView: NSView {
             canvas?.isHidden = false
             actionBar?.isHidden = false
             styleBar?.isHidden = false
+            toolStyleBar?.isHidden = false
             sizeLabel?.isHidden = false
             needsDisplay = true
             return
@@ -1104,6 +1282,9 @@ final class SelectionOverlayView: NSView {
         sizeLabel = nil
         styleBar?.removeFromSuperview()
         styleBar = nil
+        toolStyleBar?.removeFromSuperview()
+        toolStyleBar = nil
+        hoverTip?.isHidden = true
         toolButtons.removeAll()
         undoButton = nil
         redoButton = nil
@@ -1149,6 +1330,7 @@ final class SelectionOverlayView: NSView {
             canvas.currentStyle = ToolStyleStore.style(for: tool)
         }
         updateToolSelection()
+        updateToolStyleBar()
     }
 
     @objc private func colorSwatchTapped(_ sender: ColorSwatchButton) {
@@ -1183,6 +1365,7 @@ final class SelectionOverlayView: NSView {
         canvas?.tool = .select
         chrome?.moveMode = true
         updateToolSelection()
+        updateToolStyleBar()
     }
 
     @objc private func actionTapped(_ sender: NSButton) {
@@ -1300,17 +1483,20 @@ final class SelectionOverlayView: NSView {
         if allowsWindowPicking, dragStart == nil, selection.width == 0, !isEditing {
             hoveredWindowIndex = topmostWindowIndex(at: point)
         }
+        updateHoverTip(at: point)
         needsDisplay = true
     }
 
     override func mouseExited(with event: NSEvent) {
         cursorPoint = nil
         currentColor = nil
+        hoverTip?.isHidden = true
         needsDisplay = true
     }
 
     override func mouseDown(with event: NSEvent) {
         let raw = convert(event.locationInWindow, from: nil)
+        hoverTip?.isHidden = true
 
         if isEditing {
             // 内联画布只盖住选区本身；这里收到的是选区外的点击：开始重新框选。

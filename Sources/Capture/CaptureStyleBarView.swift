@@ -16,7 +16,7 @@ final class CaptureStyleBarView: NSView {
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
-        layer?.backgroundColor = NSColor.black.withAlphaComponent(0.84).cgColor
+        layer?.backgroundColor = NSColor(calibratedWhite: 0.22, alpha: 0.94).cgColor
         layer?.cornerRadius = 9
         layer?.borderWidth = 1
         layer?.borderColor = NSColor.white.withAlphaComponent(0.14).cgColor
