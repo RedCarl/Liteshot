@@ -6,7 +6,10 @@ import AppKit
 @MainActor
 final class SelectionChromeView: NSView {
     var rect: CGRect = .zero {
-        didSet { needsDisplay = true }
+        didSet {
+            needsDisplay = true
+            window?.invalidateCursorRects(for: self)
+        }
     }
     var moveMode = false {
         didSet { needsDisplay = true }
@@ -37,8 +40,7 @@ final class SelectionChromeView: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? {
         guard !isHidden, rect.width > 1, rect.height > 1 else { return nil }
         let local = convert(point, from: superview)
-        if resizeHandleIndex(at: local) != nil { return self }
-        if moveMode && rect.contains(local) { return self }
+        if resizeHandle(at: local) != nil || isNearBorder(local) { return self }
         return nil
     }
 
@@ -57,26 +59,24 @@ final class SelectionChromeView: NSView {
         ]
     }
 
-    private func resizeHandleIndex(at point: CGPoint) -> Int? {
+    private func resizeHandle(at point: CGPoint) -> Int? {
         for (index, handle) in handlePoints.enumerated() {
             if abs(point.x - handle.x) <= handleSize
                 && abs(point.y - handle.y) <= handleSize {
                 return index
             }
         }
-
-        let nearLeft = abs(point.x - rect.minX) <= borderHit
-        let nearRight = abs(point.x - rect.maxX) <= borderHit
-        let nearBottom = abs(point.y - rect.minY) <= borderHit
-        let nearTop = abs(point.y - rect.maxY) <= borderHit
-        let insideX = point.x >= rect.minX - borderHit && point.x <= rect.maxX + borderHit
-        let insideY = point.y >= rect.minY - borderHit && point.y <= rect.maxY + borderHit
-
-        if nearLeft, insideY { return nearBottom ? 6 : nearTop ? 0 : 7 }
-        if nearRight, insideY { return nearBottom ? 4 : nearTop ? 2 : 3 }
-        if nearBottom, insideX { return nearLeft ? 6 : nearRight ? 4 : 5 }
-        if nearTop, insideX { return nearLeft ? 0 : nearRight ? 2 : 1 }
         return nil
+    }
+
+    private func isNearBorder(_ point: CGPoint) -> Bool {
+        let b = borderHit
+        guard point.x >= rect.minX - b, point.x <= rect.maxX + b,
+              point.y >= rect.minY - b, point.y <= rect.maxY + b else { return false }
+        return abs(point.x - rect.minX) <= b
+            || abs(point.x - rect.maxX) <= b
+            || abs(point.y - rect.minY) <= b
+            || abs(point.y - rect.maxY) <= b
     }
 
     // MARK: - Mouse
@@ -88,9 +88,10 @@ final class SelectionChromeView: NSView {
     override func mouseDown(with event: NSEvent) {
         let point = localPoint(event)
         startRect = rect
-        if let index = resizeHandleIndex(at: point) {
+        if let index = resizeHandle(at: point) {
             drag = .resize(index, point)
-        } else if moveMode, rect.contains(point) {
+        } else if isNearBorder(point) {
+            NSCursor.closedHand.set()
             drag = .move(point)
         } else {
             drag = .none
@@ -116,9 +117,43 @@ final class SelectionChromeView: NSView {
 
     override func mouseUp(with event: NSEvent) {
         guard case .none = drag else {
+            if case .move = drag {
+                NSCursor.openHand.set()
+            }
             drag = .none
             onCommit?(rect)
             return
+        }
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        window?.invalidateCursorRects(for: self)
+    }
+
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        guard rect.width > 1, rect.height > 1 else { return }
+        let b = borderHit
+        addCursorRect(CGRect(x: rect.minX - b, y: rect.minY - b, width: rect.width + 2 * b, height: 2 * b), cursor: .openHand)
+        addCursorRect(CGRect(x: rect.minX - b, y: rect.maxY - b, width: rect.width + 2 * b, height: 2 * b), cursor: .openHand)
+        addCursorRect(CGRect(x: rect.minX - b, y: rect.minY, width: 2 * b, height: rect.height), cursor: .openHand)
+        addCursorRect(CGRect(x: rect.maxX - b, y: rect.minY, width: 2 * b, height: rect.height), cursor: .openHand)
+        for (index, point) in handlePoints.enumerated() {
+            let r = CGRect(
+                x: point.x - handleSize,
+                y: point.y - handleSize,
+                width: handleSize * 2,
+                height: handleSize * 2
+            )
+            addCursorRect(r, cursor: cursor(for: index))
+        }
+    }
+
+    private func cursor(for handle: Int) -> NSCursor {
+        switch handle {
+        case 3, 7: return .resizeLeftRight
+        default: return .resizeUpDown
         }
     }
 

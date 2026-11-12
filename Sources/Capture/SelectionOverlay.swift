@@ -1121,7 +1121,6 @@ final class SelectionOverlayView: NSView {
     private func buildToolbar(for selection: CGRect) {
         let entries: [BarEntry] = [
             .tool(.select),
-            .move,
             .tool(.rectangle),
             .tool(.ellipse),
             .tool(.arrow),
@@ -1392,7 +1391,8 @@ final class SelectionOverlayView: NSView {
     private func previewSelectionFrame(_ rect: CGRect) {
         guard isEditing else { return }
         selection = rect
-        chrome?.sizeText = "\\(Int(pixelRect(for: rect).width)) × \\(Int(pixelRect(for: rect).height))"
+        let pixels = pixelRect(for: rect)
+        chrome?.sizeText = "\(Int(pixels.width)) × \(Int(pixels.height))"
         canvas?.isHidden = true
         actionBar?.isHidden = true
         styleBar?.isHidden = true
