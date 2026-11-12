@@ -74,6 +74,10 @@ final class SelectionOverlayView: NSView {
     private var sizeLabel: NSView?
     private var toolButtons: [AnnotationTool: ToolbarIconButton] = [:]
     private var undoButton: NSButton?
+    private var redoButton: NSButton?
+    private var moveButton: ToolbarIconButton?
+    private var chrome: SelectionChromeView?
+    private var selectionMoveMode = false
     private var colorSwatches: [ColorSwatchButton] = []
     private var modeBar: NSView?
     private var escMonitor: Any?
@@ -601,8 +605,10 @@ final class SelectionOverlayView: NSView {
 
     private enum BarEntry {
         case tool(AnnotationTool)
+        case move
         case colors
         case undo
+        case redo
         case action(SelectionAction)
         case separator
     }
@@ -616,19 +622,32 @@ final class SelectionOverlayView: NSView {
         ("#000000", "黑"),
     ]
 
-    private func showEditingToolbar(image: CGImage, pixelRect: CGRect, viewRect: CGRect) {
+    private func showEditingToolbar(
+        image: CGImage,
+        pixelRect: CGRect,
+        viewRect: CGRect,
+        annotations: [Annotation] = [],
+        initialTool: AnnotationTool = .select,
+        moveMode: Bool? = nil
+    ) {
         dismissEditing()
+        if let moveMode {
+            selectionMoveMode = moveMode
+        }
 
         pendingImage = image
         pendingPixelRect = pixelRect
         editingViewRect = viewRect
 
         let document = EditorDocument()
+        for annotation in annotations {
+            document.add(annotation)
+        }
         let canvas = EditorCanvasView(image: image, document: document)
         canvas.inlineMode = true
         canvas.frame = viewRect
-        canvas.tool = .select
-        canvas.currentStyle = ToolStyleStore.style(for: .select)
+        canvas.tool = selectionMoveMode ? .select : initialTool
+        canvas.currentStyle = ToolStyleStore.style(for: canvas.tool)
         canvas.onFinishRequest = { [weak self] in
             self?.perform(.copy)
         }
@@ -645,6 +664,19 @@ final class SelectionOverlayView: NSView {
         addSubview(canvas)
         self.annotationDocument = document
         self.canvas = canvas
+
+        let chrome = SelectionChromeView(frame: bounds)
+        chrome.rect = viewRect
+        chrome.moveMode = selectionMoveMode
+        chrome.onPreview = { [weak self] rect in
+            self?.previewSelectionFrame(rect)
+        }
+        chrome.onCommit = { [weak self] rect in
+            self?.commitSelectionFrame(rect)
+        }
+        addSubview(chrome)
+        self.chrome = chrome
+
         lockButton?.isHidden = true
         modeBar?.isHidden = true
 
@@ -662,6 +694,7 @@ final class SelectionOverlayView: NSView {
     private func buildToolbar(for selection: CGRect) {
         let entries: [BarEntry] = [
             .tool(.select),
+            .move,
             .tool(.rectangle),
             .tool(.ellipse),
             .tool(.arrow),
@@ -672,14 +705,17 @@ final class SelectionOverlayView: NSView {
             .tool(.text),
             .separator,
             .colors,
-            .undo,
             .separator,
-            .action(.copy),
-            .action(.save),
+            .undo,
+            .redo,
+            .separator,
             .action(.pin),
             .action(.scroll),
             .action(.ocr),
+            .separator,
+            .action(.save),
             .action(.close),
+            .action(.copy),
         ]
 
         let buttonWidth: CGFloat = 30
@@ -771,6 +807,40 @@ final class SelectionOverlayView: NSView {
                     swatchX += swatchSize + swatchGap
                 }
 
+            case .move:
+                let button = ToolbarIconButton(title: "", target: self, action: #selector(moveTapped))
+                button.isBordered = false
+                let configuration = NSImage.SymbolConfiguration(pointSize: 14, weight: .medium)
+                button.image = NSImage(
+                    systemSymbolName: "arrow.up.left.and.arrow.down.right",
+                    accessibilityDescription: L10n.t("移动选区", "Move selection")
+                )?.withSymbolConfiguration(configuration)
+                button.imagePosition = .imageOnly
+                button.contentTintColor = .white
+                button.wantsLayer = true
+                button.layer?.cornerRadius = 4
+                button.toolTip = L10n.t("移动 / 调整选区", "Move / resize selection")
+                button.frame = CGRect(x: x, y: padding, width: w, height: buttonHeight)
+                bar.addSubview(button)
+                moveButton = button
+
+            case .redo:
+                let button = ToolbarIconButton(title: "", target: self, action: #selector(redoTapped))
+                button.isBordered = false
+                let configuration = NSImage.SymbolConfiguration(pointSize: 14, weight: .medium)
+                button.image = NSImage(
+                    systemSymbolName: "arrow.uturn.forward",
+                    accessibilityDescription: L10n.t("重做", "Redo")
+                )?.withSymbolConfiguration(configuration)
+                button.imagePosition = .imageOnly
+                button.contentTintColor = .white
+                button.wantsLayer = true
+                button.layer?.cornerRadius = 4
+                button.toolTip = L10n.t("重做 (⇧⌘Z)", "Redo (⇧⌘Z)")
+                button.frame = CGRect(x: x, y: padding, width: w, height: buttonHeight)
+                bar.addSubview(button)
+                redoButton = button
+
             case .undo:
                 let button = ToolbarIconButton(title: "", target: self, action: #selector(undoTapped))
                 button.isBordered = false
@@ -800,14 +870,15 @@ final class SelectionOverlayView: NSView {
                 )?.withSymbolConfiguration(configuration)
                 button.imagePosition = .imageOnly
                 button.imageScaling = .scaleProportionallyDown
-                button.contentTintColor = .white
+                switch action {
+                case .copy: button.contentTintColor = .systemGreen
+                case .close: button.contentTintColor = .systemRed
+                default: button.contentTintColor = .white
+                }
                 button.wantsLayer = true
                 button.layer?.cornerRadius = 4
                 button.toolTip = item.tooltip
                 button.frame = CGRect(x: x, y: padding, width: w, height: buttonHeight)
-                if action == .copy {
-                    button.baseBackground = highlightColor
-                }
                 bar.addSubview(button)
             }
             x += w + gap
@@ -843,9 +914,9 @@ final class SelectionOverlayView: NSView {
         switch action {
         case .copy:
             return (
-                L10n.t("复制", "Copy"),
-                "doc.on.doc",
-                L10n.t("复制到剪贴板并退出 (Enter / ⌘C)", "Copy and exit (Enter / ⌘C)")
+                L10n.t("完成", "Done"),
+                "checkmark",
+                L10n.t("完成并复制 (Enter / ⌘C)", "Finish and copy (Enter / ⌘C)")
             )
         case .save:
             return (
@@ -860,17 +931,20 @@ final class SelectionOverlayView: NSView {
         case .ocr:
             return ("OCR", "text.viewfinder", L10n.t("识别文字", "Recognize text"))
         case .close:
-            return (L10n.t("关闭", "Close"), "xmark", L10n.t("取消截图 (Esc)", "Cancel capture (Esc)"))
+            return (L10n.t("取消", "Cancel"), "xmark", L10n.t("取消截图 (Esc)", "Cancel capture (Esc)"))
         }
     }
 
     private func updateToolSelection() {
         let active = canvas?.tool ?? .select
         for (tool, button) in toolButtons {
-            button.baseBackground = tool == active
+            button.baseBackground = (!selectionMoveMode && tool == active)
                 ? NSColor.white.withAlphaComponent(0.18)
                 : .clear
         }
+        moveButton?.baseBackground = selectionMoveMode
+            ? NSColor.white.withAlphaComponent(0.18)
+            : .clear
         let activeHex = canvas.map { ToolStyleStore.style(for: $0.tool).colorHex }
         for swatch in colorSwatches {
             swatch.isActive = swatch.swatchHex == activeHex
@@ -879,6 +953,67 @@ final class SelectionOverlayView: NSView {
 
     private func updateUndoState() {
         undoButton?.isEnabled = annotationDocument?.canUndo ?? false
+        redoButton?.isEnabled = annotationDocument?.canRedo ?? false
+    }
+
+    private func previewSelectionFrame(_ rect: CGRect) {
+        guard isEditing else { return }
+        selection = rect
+        chrome?.sizeText = "\\(Int(pixelRect(for: rect).width)) × \\(Int(pixelRect(for: rect).height))"
+        canvas?.isHidden = true
+        actionBar?.isHidden = true
+        sizeLabel?.isHidden = true
+        needsDisplay = true
+    }
+
+    private func commitSelectionFrame(_ rect: CGRect) {
+        guard let oldView = editingViewRect, let oldPixel = pendingPixelRect else { return }
+        canvas?.commitPendingText()
+        let annotations = annotationDocument?.annotations ?? []
+        let tool = canvas?.tool ?? .select
+        let move = selectionMoveMode
+
+        if rect == oldView {
+            chrome?.sizeText = ""
+            canvas?.isHidden = false
+            actionBar?.isHidden = false
+            sizeLabel?.isHidden = false
+            needsDisplay = true
+            return
+        }
+
+        let newPixel = pixelRect(for: rect)
+        guard newPixel.width >= 1, newPixel.height >= 1,
+              let cropped = image.cropping(to: newPixel) else {
+            chrome?.sizeText = ""
+            canvas?.isHidden = false
+            actionBar?.isHidden = false
+            sizeLabel?.isHidden = false
+            needsDisplay = true
+            return
+        }
+
+        let dx = oldPixel.minX - newPixel.minX
+        let dy = oldPixel.minY - newPixel.minY
+        var moved: [Annotation] = []
+        for var annotation in annotations {
+            annotation.translate(dx: dx, dy: dy)
+            moved.append(annotation)
+        }
+
+        selection = rect
+        selectionMoveMode = move
+        dismissEditing()
+        selection = rect
+        showEditingToolbar(
+            image: cropped,
+            pixelRect: newPixel,
+            viewRect: rect,
+            annotations: moved,
+            initialTool: tool,
+            moveMode: move
+        )
+        needsDisplay = true
     }
 
     private func updateSizeLabel(for rect: CGRect) {
@@ -932,6 +1067,10 @@ final class SelectionOverlayView: NSView {
         sizeLabel = nil
         toolButtons.removeAll()
         undoButton = nil
+        redoButton = nil
+        moveButton = nil
+        chrome?.removeFromSuperview()
+        chrome = nil
         colorSwatches.removeAll()
         pendingImage = nil
         pendingPixelRect = nil
@@ -963,6 +1102,8 @@ final class SelectionOverlayView: NSView {
         let tools = AnnotationTool.allCases
         guard tools.indices.contains(sender.tag) else { return }
         canvas?.commitPendingText()
+        selectionMoveMode = false
+        chrome?.moveMode = false
         let tool = tools[sender.tag]
         canvas?.tool = tool
         if let canvas {
@@ -988,6 +1129,21 @@ final class SelectionOverlayView: NSView {
         canvas?.select(id: nil)
         canvas?.needsDisplay = true
         updateUndoState()
+    }
+
+    @objc private func redoTapped() {
+        annotationDocument?.redo()
+        canvas?.select(id: nil)
+        canvas?.needsDisplay = true
+        updateUndoState()
+    }
+
+    @objc private func moveTapped() {
+        canvas?.commitPendingText()
+        selectionMoveMode = true
+        canvas?.tool = .select
+        chrome?.moveMode = true
+        updateToolSelection()
     }
 
     @objc private func actionTapped(_ sender: NSButton) {
