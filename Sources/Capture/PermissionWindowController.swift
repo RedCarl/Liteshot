@@ -172,17 +172,21 @@ final class PermissionWindowController: NSWindowController {
         window.setContentSize(NSSize(width: 620, height: 520))
 
         model.requestPermission = { [weak self] in
-            // 先把自定义引导窗口收起来，让系统授权框到最前面；
-            // 之前引导窗口是 floating，会把系统弹窗挡在后面。
-            self?.window?.orderOut(nil)
+            // 不要 orderOut：把最后一个窗口隐藏后 App 会变成没有窗口的
+            // 后台进程，系统授权框反而不弹了。这里只把引导窗口降到普通
+            // 层级，既保留窗口/激活状态，又让系统授权框显示在前面。
+            guard let self else { return }
+            self.window?.level = .normal
+            self.window?.orderFrontRegardless()
             _ = ScreenPermission.request()
-            self?.revealGuideWhenGranted()
+            self.revealGuideWhenGranted()
         }
         model.openSettings = { [weak self] in
-            // 打开系统设置时也先收起引导窗口，避免挡住设置页。
-            self?.window?.orderOut(nil)
+            guard let self else { return }
+            self.window?.level = .normal
+            self.window?.orderFrontRegardless()
             ScreenPermission.openSystemSettings()
-            self?.revealGuideWhenGranted()
+            self.revealGuideWhenGranted()
         }
         model.close = { [weak self] in
             self?.window?.close()
@@ -207,15 +211,20 @@ final class PermissionWindowController: NSWindowController {
                 if ScreenPermission.isGranted {
                     guard let self else { return }
                     self.model.refresh()
+                    self.window?.level = .floating
                     NSApp.activate(ignoringOtherApps: true)
                     self.window?.makeKeyAndOrderFront(nil)
                     return
                 }
             }
+            // 超时仍未授权：保持普通层级，不抢系统设置/授权框的前面。
+            // 用户下次从菜单或截图入口打开引导时会重新提升到 floating。
         }
     }
 
     func show() {
+        revealTask?.cancel()
+        window?.level = .floating
         model.refresh()
 
         if let window {
