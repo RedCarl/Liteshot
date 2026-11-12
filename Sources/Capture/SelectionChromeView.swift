@@ -11,6 +11,9 @@ final class SelectionChromeView: NSView {
     var moveMode = false {
         didSet { needsDisplay = true }
     }
+    var cornerRadius: CGFloat = 0 {
+        didSet { needsDisplay = true }
+    }
     var sizeText: String = "" {
         didSet { needsDisplay = true }
     }
@@ -168,7 +171,12 @@ final class SelectionChromeView: NSView {
 
         let accent = NSColor(hex: "#2F7CF6") ?? .controlAccentColor
         accent.setStroke()
-        let border = NSBezierPath(rect: rect.insetBy(dx: 0.5, dy: 0.5))
+        let radius = max(0, cornerRadius - 0.5)
+        let border = NSBezierPath(
+            roundedRect: rect.insetBy(dx: 0.5, dy: 0.5),
+            xRadius: radius,
+            yRadius: radius
+        )
         border.lineWidth = 1.5
         border.stroke()
 

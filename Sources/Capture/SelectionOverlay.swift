@@ -91,6 +91,8 @@ final class SelectionOverlayView: NSView {
     private var styleBar: CaptureStyleBarView?
     private var toolStyleBar: CaptureToolStyleBarView?
     private var hoverTip: HoverTipView?
+    private var hoverTipSignature = ""
+    private var hoverTipWork: DispatchWorkItem?
     private var selectionMoveMode = false
     private var captureCornerRadius: CGFloat = 0
     private var captureShadow = false
@@ -470,8 +472,9 @@ final class SelectionOverlayView: NSView {
     // MARK: - Drawing
 
     override func draw(_ dirtyRect: NSRect) {
-        // 覆盖层只画边框、手柄和工具条，背景保持透明，
-        // 让桌面/窗口以原本的样子透出来，不显示冻结截图。
+        // 选区外遮罩，选区内保持实时桌面；圆角对遮罩和边框同时生效。
+        drawSelectionMask()
+
         if selection.width == 0,
            !isEditing,
            allowsWindowPicking,
@@ -499,8 +502,17 @@ final class SelectionOverlayView: NSView {
         }
 
         if selection.width > 0, selection.height > 0 {
+            if captureShadow {
+                drawSelectionShadow()
+            }
+
+            let radius = max(0, captureCornerRadius - 0.75)
             selectionBorderColor.setStroke()
-            let border = NSBezierPath(rect: selection.insetBy(dx: 0.5, dy: 0.5))
+            let border = NSBezierPath(
+                roundedRect: selection.insetBy(dx: 0.75, dy: 0.75),
+                xRadius: radius,
+                yRadius: radius
+            )
             border.lineWidth = 1.5
             border.stroke()
 
@@ -516,6 +528,45 @@ final class SelectionOverlayView: NSView {
             drawMagnifier()
         }
         drawStatus()
+    }
+
+    private func drawSelectionMask() {
+        let configured = AppSettings.shared.maskOpacity
+        let alpha = configured > 0.05 ? configured : 0.32
+        let color = (NSColor(hex: AppSettings.shared.maskColorHex) ?? .black)
+            .withAlphaComponent(alpha)
+        color.setFill()
+
+        if selection.width > 1, selection.height > 1 {
+            let path = NSBezierPath(rect: bounds)
+            path.appendRoundedRect(
+                selection,
+                xRadius: max(0, captureCornerRadius),
+                yRadius: max(0, captureCornerRadius)
+            )
+            path.windingRule = .evenOdd
+            path.fill()
+        } else {
+            bounds.fill()
+        }
+    }
+
+    private func drawSelectionShadow() {
+        NSGraphicsContext.saveGraphicsState()
+        let shadow = NSShadow()
+        shadow.shadowColor = NSColor.black.withAlphaComponent(AppSettings.shared.exportShadowOpacity)
+        shadow.shadowBlurRadius = CGFloat(AppSettings.shared.exportShadowBlur)
+        shadow.shadowOffset = NSSize(width: 0, height: -3)
+        shadow.set()
+        let path = NSBezierPath(
+            roundedRect: selection,
+            xRadius: max(0, captureCornerRadius),
+            yRadius: max(0, captureCornerRadius)
+        )
+        path.lineWidth = 2
+        NSColor.black.withAlphaComponent(0.01).setStroke()
+        path.stroke()
+        NSGraphicsContext.restoreGraphicsState()
     }
 
     private func drawWindowBadge(number: Int, at point: CGPoint) {
@@ -677,6 +728,7 @@ final class SelectionOverlayView: NSView {
 
         let chrome = SelectionChromeView(frame: bounds)
         chrome.rect = viewRect
+        chrome.cornerRadius = captureCornerRadius
         chrome.moveMode = selectionMoveMode
         chrome.onPreview = { [weak self] rect in
             self?.previewSelectionFrame(rect)
@@ -833,7 +885,15 @@ final class SelectionOverlayView: NSView {
         for container in [actionBar, styleBar, toolStyleBar] {
             guard let container, !container.isHidden else { continue }
             for view in container.subviews {
-                guard let tip = view.toolTip, !tip.isEmpty else { continue }
+                let tip: String?
+                if let button = view as? ToolbarIconButton, !button.hoverHint.isEmpty {
+                    tip = button.hoverHint
+                } else if let toolTip = view.toolTip, !toolTip.isEmpty {
+                    tip = toolTip
+                } else {
+                    tip = nil
+                }
+                guard let tip else { continue }
                 let frame = view.convert(view.bounds, to: self)
                 if frame.contains(point) {
                     return (tip, frame)
@@ -845,9 +905,26 @@ final class SelectionOverlayView: NSView {
 
     private func updateHoverTip(at point: CGPoint) {
         guard let (text, frame) = tooltipInfo(at: point) else {
+            hoverTipWork?.cancel()
             hoverTip?.isHidden = true
+            hoverTipSignature = ""
             return
         }
+
+        let signature = "\(text)|\(Int(frame.minX))|\(Int(frame.maxY))|\(Int(frame.width))"
+        guard signature != hoverTipSignature else { return }
+        hoverTipSignature = signature
+        hoverTip?.isHidden = true
+        hoverTipWork?.cancel()
+
+        let work = DispatchWorkItem { [weak self] in
+            self?.showHoverTip(text, at: frame)
+        }
+        hoverTipWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18, execute: work)
+    }
+
+    private func showHoverTip(_ text: String, at frame: CGRect) {
         let tip: HoverTipView
         if let existing = hoverTip {
             tip = existing
@@ -857,7 +934,10 @@ final class SelectionOverlayView: NSView {
             hoverTip = tip
         }
         addSubview(tip, positioned: .above, relativeTo: nil)
-        tip.text = text
+        if tip.text != text {
+            tip.text = text
+            tip.needsDisplay = true
+        }
         let size = tip.preferredSize(for: text)
         var x = frame.midX - size.width / 2
         x = min(max(x, 8), bounds.width - size.width - 8)
@@ -868,7 +948,6 @@ final class SelectionOverlayView: NSView {
         y = min(max(y, 4), bounds.height - size.height - 4)
         tip.frame = CGRect(x: x, y: y, width: size.width, height: size.height)
         tip.isHidden = false
-        tip.needsDisplay = true
     }
 
     private func buildToolbar(for selection: CGRect) {
@@ -950,7 +1029,7 @@ final class SelectionOverlayView: NSView {
                 button.contentTintColor = .white
                 button.wantsLayer = true
                 button.layer?.cornerRadius = 4
-                button.toolTip = toolTip(for: tool)
+                button.hoverHint = toolTip(for: tool)
                 button.frame = CGRect(x: x, y: padding, width: w, height: buttonHeight)
                 button.baseBackground = tool == .select
                     ? NSColor.white.withAlphaComponent(0.18)
@@ -997,7 +1076,7 @@ final class SelectionOverlayView: NSView {
                 button.contentTintColor = .white
                 button.wantsLayer = true
                 button.layer?.cornerRadius = 4
-                button.toolTip = L10n.t("移动 / 调整选区", "Move / resize selection")
+                button.hoverHint = L10n.t("移动 / 调整选区", "Move / resize selection")
                 button.frame = CGRect(x: x, y: padding, width: w, height: buttonHeight)
                 bar.addSubview(button)
                 moveButton = button
@@ -1014,7 +1093,7 @@ final class SelectionOverlayView: NSView {
                 button.contentTintColor = .white
                 button.wantsLayer = true
                 button.layer?.cornerRadius = 4
-                button.toolTip = L10n.t("重做 (⇧⌘Z)", "Redo (⇧⌘Z)")
+                button.hoverHint = L10n.t("重做 (⇧⌘Z)", "Redo (⇧⌘Z)")
                 button.frame = CGRect(x: x, y: padding, width: w, height: buttonHeight)
                 bar.addSubview(button)
                 redoButton = button
@@ -1031,7 +1110,7 @@ final class SelectionOverlayView: NSView {
                 button.contentTintColor = .white
                 button.wantsLayer = true
                 button.layer?.cornerRadius = 4
-                button.toolTip = L10n.t("撤销 (⌘Z)", "Undo (⌘Z)")
+                button.hoverHint = L10n.t("撤销 (⌘Z)", "Undo (⌘Z)")
                 button.frame = CGRect(x: x, y: padding, width: w, height: buttonHeight)
                 bar.addSubview(button)
                 undoButton = button
@@ -1055,7 +1134,7 @@ final class SelectionOverlayView: NSView {
                 }
                 button.wantsLayer = true
                 button.layer?.cornerRadius = 4
-                button.toolTip = item.tooltip
+                button.hoverHint = item.tooltip
                 button.frame = CGRect(x: x, y: padding, width: w, height: buttonHeight)
                 bar.addSubview(button)
             }
@@ -1211,10 +1290,16 @@ final class SelectionOverlayView: NSView {
             shadow: captureShadow
         )
         bar.onRadiusChanged = { [weak self] radius in
-            self?.captureCornerRadius = radius
+            guard let self else { return }
+            self.captureCornerRadius = radius
+            self.chrome?.cornerRadius = radius
+            self.chrome?.needsDisplay = true
+            self.needsDisplay = true
         }
         bar.onShadowChanged = { [weak self] shadow in
-            self?.captureShadow = shadow
+            guard let self else { return }
+            self.captureShadow = shadow
+            self.needsDisplay = true
         }
 
         let width: CGFloat = 378
@@ -1484,19 +1569,27 @@ final class SelectionOverlayView: NSView {
             hoveredWindowIndex = topmostWindowIndex(at: point)
         }
         updateHoverTip(at: point)
-        needsDisplay = true
+        // 编辑状态下的遮罩/边框是静态的，不要每个 mouseMoved 都整屏重绘；
+        // 只更新 hover 提示这个小视图，避免掉帧。
+        if !isEditing {
+            needsDisplay = true
+        }
     }
 
     override func mouseExited(with event: NSEvent) {
         cursorPoint = nil
         currentColor = nil
+        hoverTipWork?.cancel()
         hoverTip?.isHidden = true
+        hoverTipSignature = ""
         needsDisplay = true
     }
 
     override func mouseDown(with event: NSEvent) {
         let raw = convert(event.locationInWindow, from: nil)
+        hoverTipWork?.cancel()
         hoverTip?.isHidden = true
+        hoverTipSignature = ""
 
         if isEditing {
             // 内联画布只盖住选区本身；这里收到的是选区外的点击：开始重新框选。
@@ -1936,6 +2029,8 @@ final class ColorSwatchButton: NSButton {
 }
 
 final class ToolbarIconButton: NSButton {
+    var hoverHint: String = ""
+
     var baseBackground: NSColor = .clear {
         didSet { layer?.backgroundColor = baseBackground.cgColor }
     }
@@ -1970,4 +2065,27 @@ final class ToolbarIconButton: NSButton {
         hovered = false
         layer?.backgroundColor = baseBackground.cgColor
     }
+}
+
+/// 非活动屏幕上的遮罩层：只负责变暗和吞掉鼠标事件，保证截图时所有屏幕都不能操作。
+@MainActor
+final class ShieldView: NSView {
+    override var isOpaque: Bool { false }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let configured = AppSettings.shared.maskOpacity
+        let alpha = configured > 0.05 ? configured : 0.32
+        (NSColor(hex: AppSettings.shared.maskColorHex) ?? .black)
+            .withAlphaComponent(alpha)
+            .setFill()
+        bounds.fill()
+    }
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    override func mouseDown(with event: NSEvent) {}
+    override func mouseUp(with event: NSEvent) {}
+    override func rightMouseDown(with event: NSEvent) {}
+    override func rightMouseUp(with event: NSEvent) {}
+    override func otherMouseDown(with event: NSEvent) {}
+    override func scrollWheel(with event: NSEvent) {}
 }

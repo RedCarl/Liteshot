@@ -34,6 +34,7 @@ final class ScrollCaptureSession: NSObject {
     private var statusLabel: NSTextField?
     private var thumbnailView: NSImageView?
     private var captureTask: Task<Void, Never>?
+    private var shieldWindows: [NSWindow] = []
     private var isFinishing = false
 
     var onFinish: ((CGImage) -> Void)?
@@ -130,6 +131,7 @@ final class ScrollCaptureSession: NSObject {
         }
         showBorder()
         showHUD()
+        showShields()
         startPolling()
     }
 
@@ -311,10 +313,44 @@ final class ScrollCaptureSession: NSObject {
     }
 
     private func closeWindows() {
+        dismissShields()
         hudWindow?.orderOut(nil)
         hudWindow = nil
         borderWindow?.orderOut(nil)
         borderWindow = nil
+    }
+
+    private func showShields() {
+        dismissShields()
+        let activeID = screen.displayID
+        for other in NSScreen.screens where other.displayID != activeID {
+            let window = OverlayWindow(
+                contentRect: other.frame,
+                styleMask: [.borderless, .nonactivatingPanel],
+                backing: .buffered,
+                defer: false
+            )
+            window.becomesKeyOnlyIfNeeded = false
+            window.animationBehavior = .none
+            window.level = .screenSaver
+            window.backgroundColor = .clear
+            window.isOpaque = false
+            window.hasShadow = false
+            window.ignoresMouseEvents = false
+            window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+            window.setFrame(other.frame, display: true)
+            window.contentView = ShieldView(frame: NSRect(origin: .zero, size: other.frame.size))
+            window.orderFrontRegardless()
+            shieldWindows.append(window)
+        }
+    }
+
+    private func dismissShields() {
+        for window in shieldWindows {
+            window.orderOut(nil)
+            window.contentView = nil
+        }
+        shieldWindows.removeAll()
     }
 
     // MARK: - Actions

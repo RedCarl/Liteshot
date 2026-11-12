@@ -43,6 +43,7 @@ final class CaptureCoordinator {
 
     private var overlayWindow: NSWindow?
     private var countdownWindow: NSWindow?
+    private var shieldWindows: [NSWindow] = []
     private var scrollSession: ScrollCaptureSession?
     private var crossScreenController: CrossScreenCaptureController?
     private var pendingScrollStrategy: ScrollStrategy = .vertical
@@ -646,6 +647,7 @@ final class CaptureCoordinator {
 
         window.contentView = view
         showOverlay(window, firstResponder: view)
+        showShields(excluding: screen)
     }
 
     private func presentWindowPicker(on screen: NSScreen, image: CGImage, items: [WindowPickerView.Item]) {
@@ -664,6 +666,7 @@ final class CaptureCoordinator {
 
         window.contentView = view
         showOverlay(window, firstResponder: view)
+        showShields(excluding: screen)
     }
 
     private func handleWindowPick(_ windows: [CapturableWindow], on screen: NSScreen) {
@@ -758,6 +761,39 @@ final class CaptureCoordinator {
         return context.makeImage()
     }
 
+    private func showShields(excluding active: NSScreen) {
+        dismissShields()
+        let activeID = active.displayID
+        for screen in NSScreen.screens where screen.displayID != activeID {
+            let window = OverlayWindow(
+                contentRect: screen.frame,
+                styleMask: [.borderless, .nonactivatingPanel],
+                backing: .buffered,
+                defer: false
+            )
+            window.becomesKeyOnlyIfNeeded = false
+            window.animationBehavior = .none
+            window.level = .screenSaver
+            window.backgroundColor = .clear
+            window.isOpaque = false
+            window.hasShadow = false
+            window.ignoresMouseEvents = false
+            window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+            window.setFrame(screen.frame, display: true)
+            window.contentView = ShieldView(frame: NSRect(origin: .zero, size: screen.frame.size))
+            window.orderFrontRegardless()
+            shieldWindows.append(window)
+        }
+    }
+
+    private func dismissShields() {
+        for window in shieldWindows {
+            window.orderOut(nil)
+            window.contentView = nil
+        }
+        shieldWindows.removeAll()
+    }
+
     private func makeOverlayWindow(on screen: NSScreen) -> NSWindow {
         let window = OverlayWindow(
             contentRect: screen.frame,
@@ -816,6 +852,7 @@ final class CaptureCoordinator {
         window.contentView = view
         window.orderFrontRegardless()
         countdownWindow = window
+        showShields(excluding: screen)
 
         Task { @MainActor in
             for remaining in stride(from: seconds, through: 1, by: -1) {
@@ -825,6 +862,7 @@ final class CaptureCoordinator {
             window.orderOut(nil)
             window.contentView = nil
             self.countdownWindow = nil
+            self.dismissShields()
             completion()
         }
     }
@@ -873,6 +911,7 @@ final class CaptureCoordinator {
     }
 
     private func dismissOverlay(hideApp: Bool = true) {
+        dismissShields()
         overlayWindow?.orderOut(nil)
         overlayWindow?.contentView = nil
         overlayWindow = nil

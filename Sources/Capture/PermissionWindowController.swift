@@ -80,7 +80,6 @@ struct PermissionView: View {
                     }
                     .buttonStyle(.plain)
                     .keyboardShortcut(.defaultAction)
-                    .help(helpText)
 
                     Button(action: { showHelp.toggle() }) {
                         Image(systemName: "questionmark")

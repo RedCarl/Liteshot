@@ -130,10 +130,7 @@ final class EditorCanvasView: NSView {
 
         NSGraphicsContext.restoreGraphicsState()
 
-        (NSColor(hex: "#2F7CF6") ?? .controlAccentColor).setStroke()
-        let border = NSBezierPath(rect: bounds.insetBy(dx: 0.5, dy: 0.5))
-        border.lineWidth = 1.5
-        border.stroke()
+        // 选区边框由截取层绘制，这里不再画方形边框，避免圆角预览时冲突。
     }
 
     private func drawAnnotation(_ annotation: Annotation) {
