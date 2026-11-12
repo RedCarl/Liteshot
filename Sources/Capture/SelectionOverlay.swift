@@ -1,18 +1,18 @@
 import AppKit
 
 enum SelectionAction: Int {
-    case annotate
     case copy
     case save
+    case pin
     case scroll
     case ocr
-    case qr
-    case download
-    case pin
+    case close
 }
 
 /// 覆盖全屏的截图选区窗口：置顶到屏幕保护程序层级，盖住普通窗口与全屏 App。
-final class OverlayWindow: NSWindow {
+/// 用 nonactivatingPanel，即使 App 没被系统激活也能拿到键盘焦点，
+/// 避免热键唤起覆盖层后 Esc / 文字输入失灵。
+final class OverlayWindow: NSPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
 }
@@ -58,11 +58,28 @@ final class SelectionOverlayView: NSView {
     var onScrollDirectionChanged: ((ScrollStrategy) -> Void)?
     var onScrollRegionSelected: ((CGRect) -> Void)?
     var onAction: ((SelectionAction, CGImage, CGRect) -> Void)?
+    /// 顶部悬浮模式条：全屏 / 滚动 / 跨屏 / 延迟 / 上次区域 / OCR / 二维码 / 历史。
+    var onRequestCaptureMode: ((CaptureMode) -> Void)?
+    var onRequestHistory: (() -> Void)?
+
+    // MARK: - 内联编辑状态
 
     private var actionBar: NSView?
+    private var canvas: EditorCanvasView?
+    private var annotationDocument: EditorDocument?
     private var pendingImage: CGImage?
     private var pendingPixelRect: CGRect?
+    /// 选区/窗口在覆盖层里的视图矩形（左下原点，point）。
+    private var editingViewRect: CGRect?
+    private var sizeLabel: NSView?
+    private var toolButtons: [AnnotationTool: ToolbarIconButton] = [:]
+    private var undoButton: NSButton?
+    private var colorSwatches: [ColorSwatchButton] = []
+    private var modeBar: NSView?
+    private var escMonitor: Any?
+
     private var showsActionBar: Bool { allowsWindowPicking && !scrollMode && !skipActionBar }
+    private var isEditing: Bool { pendingImage != nil }
 
     private var highlightColor: NSColor {
         NSColor(hex: AppSettings.shared.highlightColorHex) ?? .controlAccentColor
@@ -94,11 +111,101 @@ final class SelectionOverlayView: NSView {
         }
         if allowsWindowPicking, !scrollMode {
             setupLockButton()
+            setupModeBar()
         }
     }
 
+    // MARK: - 顶部模式条
+
+    private enum OverlayCommand: Int {
+        case fullScreen
+        case scroll
+        case crossScreen
+        case delayed
+        case lastArea
+        case ocr
+        case qr
+        case history
+    }
+
+    private func setupModeBar() {
+        let items: [(OverlayCommand, String, String)] = [
+            (.fullScreen, "arrow.up.left.and.arrow.down.right", L10n.t("全屏截图", "Full screen")),
+            (.scroll, "arrow.up.and.down", L10n.t("滚动截图", "Scrolling capture")),
+            (.crossScreen, "rectangle.split.2x1", L10n.t("跨屏区域", "Cross-display region")),
+            (.delayed, "timer", L10n.t("延迟截图", "Delayed capture")),
+            (.lastArea, "arrow.counterclockwise", L10n.t("上一次区域", "Last area")),
+            (.ocr, "text.viewfinder", L10n.t("识别文字", "OCR")),
+            (.qr, "qrcode", L10n.t("二维码 / 条形码", "QR / barcode")),
+            (.history, "clock.arrow.circlepath", L10n.t("截图历史", "Capture history")),
+        ]
+
+        let buttonSize: CGFloat = 32
+        let gap: CGFloat = 4
+        let padding: CGFloat = 6
+        let width = padding * 2 + buttonSize * CGFloat(items.count) + gap * CGFloat(items.count - 1)
+        let height = buttonSize + padding * 2
+
+        let bar = ToolbarBarView(frame: CGRect(x: 0, y: 0, width: width, height: height))
+        bar.wantsLayer = true
+        bar.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.78).cgColor
+        bar.layer?.cornerRadius = 9
+        bar.layer?.borderWidth = 1
+        bar.layer?.borderColor = NSColor.white.withAlphaComponent(0.12).cgColor
+
+        var x = padding
+        for (command, symbol, title) in items {
+            let button = ToolbarIconButton(title: "", target: self, action: #selector(modeTapped(_:)))
+            button.tag = command.rawValue
+            button.isBordered = false
+            let configuration = NSImage.SymbolConfiguration(pointSize: 14, weight: .medium)
+            button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)?
+                .withSymbolConfiguration(configuration)
+            button.imagePosition = .imageOnly
+            button.imageScaling = .scaleProportionallyDown
+            button.contentTintColor = .white
+            button.wantsLayer = true
+            button.layer?.cornerRadius = 4
+            button.toolTip = title
+            button.frame = CGRect(x: x, y: padding, width: buttonSize, height: buttonSize)
+            bar.addSubview(button)
+            x += buttonSize + gap
+        }
+
+        addSubview(bar)
+        modeBar = bar
+    }
+
+    @objc private func modeTapped(_ sender: NSButton) {
+        guard let command = OverlayCommand(rawValue: sender.tag) else { return }
+        switch command {
+        case .fullScreen:
+            selectFullScreen()
+        case .scroll:
+            onRequestCaptureMode?(.scroll)
+        case .crossScreen:
+            onRequestCaptureMode?(.crossScreen)
+        case .delayed:
+            onRequestCaptureMode?(.delayed)
+        case .lastArea:
+            onRequestCaptureMode?(.lastArea)
+        case .ocr:
+            onRequestCaptureMode?(.ocr)
+        case .qr:
+            onRequestCaptureMode?(.qr)
+        case .history:
+            onRequestHistory?()
+        }
+    }
+
+    private func selectFullScreen() {
+        modeBar?.isHidden = true
+        let full = CGRect(x: 0, y: 0, width: image.width, height: image.height)
+        showEditingToolbar(image: image, pixelRect: full, viewRect: bounds)
+    }
+
     private func setupLockButton() {
-        let button = NSButton(title: "", target: self, action: #selector(toggleAspectLock))
+        let button = CursorButton(title: "", target: self, action: #selector(toggleAspectLock))
         button.isBordered = false
         button.wantsLayer = true
         button.layer?.cornerRadius = 6
@@ -138,7 +245,7 @@ final class SelectionOverlayView: NSView {
             L10n.t("全景", "Panorama"),
         ]
         for (index, title) in titles.enumerated() {
-            let button = NSButton(title: title, target: self, action: #selector(directionTapped(_:)))
+            let button = CursorButton(title: title, target: self, action: #selector(directionTapped(_:)))
             button.tag = index
             button.isBordered = false
             button.wantsLayer = true
@@ -175,8 +282,28 @@ final class SelectionOverlayView: NSView {
         onScrollDirectionChanged?(scrollStrategy)
     }
 
+    /// 顶部可用边界（视图坐标）：菜单栏/刘海下沿。
+    private var safeTopEdge: CGFloat {
+        guard let screen = window?.screen ?? NSScreen.main else { return bounds.height }
+        let edge = screen.visibleFrame.maxY - screen.frame.minY
+        return min(bounds.height, max(0, edge))
+    }
+
+    /// 底部可用边界（视图坐标）：Dock 上沿。
+    private var safeBottomEdge: CGFloat {
+        guard let screen = window?.screen ?? NSScreen.main else { return 0 }
+        return max(0, screen.visibleFrame.minY - screen.frame.minY)
+    }
+
     override func layout() {
         super.layout()
+        if let modeBar {
+            // 模式条放在菜单栏/刘海下方，避免被刘海挡住。
+            modeBar.frame.origin = CGPoint(
+                x: (bounds.width - modeBar.frame.width) / 2,
+                y: safeTopEdge - modeBar.frame.height - 10
+            )
+        }
         if let lockButton {
             lockButton.frame = CGRect(x: bounds.width - 44, y: bounds.height - 88, width: 32, height: 32)
         }
@@ -232,14 +359,10 @@ final class SelectionOverlayView: NSView {
     }
 
     private func topmostWindowIndex(at point: CGPoint) -> Int? {
-        // 窗口列表不保证可见层级；优先取包含光标的最小窗口，避免全屏底层窗口吞掉小窗口。
-        windowHits.indices
-            .filter { windowHits[$0].rect.contains(point) }
-            .min { lhs, rhs in
-                let left = windowHits[lhs].rect.width * windowHits[lhs].rect.height
-                let right = windowHits[rhs].rect.width * windowHits[rhs].rect.height
-                return left < right
-            }
+        // windowHits 按 CGWindowList 的前后顺序插入（前 → 后），
+        // 取第一个包含光标的窗口才是屏幕上真正可见的那一个。
+        // 不能按“最小面积”挑：那会把被大窗口盖住的 Finder 窗口也算进来。
+        windowHits.firstIndex { $0.rect.contains(point) }
     }
 
     private func snapped(_ value: CGFloat, guides: [CGFloat]) -> (value: CGFloat, guide: CGFloat?) {
@@ -264,14 +387,37 @@ final class SelectionOverlayView: NSView {
     override var acceptsFirstResponder: Bool { true }
     override var isOpaque: Bool { false }
 
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    private func installEscapeMonitorIfNeeded() {
+        guard window != nil, escMonitor == nil else { return }
+        escMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self, event.keyCode == 53 else { return event }
+            // Esc 永远退出截图：不依赖当前第一响应者（文字框 / 颜色面板 / 画布）。
+            self.onCancel?()
+            return nil
+        }
+    }
+
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        if newWindow == nil, let escMonitor {
+            NSEvent.removeMonitor(escMonitor)
+            self.escMonitor = nil
+        }
+        super.viewWillMove(toWindow: newWindow)
+    }
+
     override func resetCursorRects() {
-        addCursorRect(bounds, cursor: .crosshair)
+        // 框选阶段用十字；选区定下来、工具条出现后恢复普通箭头，
+        // 否则鼠标移到工具条/按钮上时仍然显示十字。
+        addCursorRect(bounds, cursor: isEditing ? .arrow : .crosshair)
     }
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         window?.invalidateCursorRects(for: self)
         window?.makeFirstResponder(self)
+        installEscapeMonitorIfNeeded()
 
         if let location = window?.mouseLocationOutsideOfEventStream {
             let point = convert(location, from: nil)
@@ -308,6 +454,7 @@ final class SelectionOverlayView: NSView {
         bounds.fill()
 
         if selection.width == 0,
+           !isEditing,
            allowsWindowPicking,
            let index = hoveredWindowIndex,
            windowHits.indices.contains(index) {
@@ -348,13 +495,17 @@ final class SelectionOverlayView: NSView {
             border.lineWidth = 1
             border.stroke()
 
-            drawSizeLabel()
-        } else {
+            if !isEditing {
+                drawSizeLabel()
+            }
+        } else if !isEditing {
             drawHint()
         }
 
         drawSnapGuides()
-        drawMagnifier()
+        if !isEditing, dragStart != nil || selection.width == 0 {
+            drawMagnifier()
+        }
         drawStatus()
     }
 
@@ -405,7 +556,8 @@ final class SelectionOverlayView: NSView {
 
     private func compositeSelectedWindows() -> (image: CGImage, pixelRect: CGRect, viewRect: CGRect)? {
         guard !selectedWindows.isEmpty else { return nil }
-        let union = selectedWindows.reduce(CGRect.null) { $0.union($1.rect) }
+        let union = selectedWindows.reduce(CGRect.null) { $0.union($1.rect) }.intersection(bounds)
+        guard union.width >= 1, union.height >= 1 else { return nil }
         let pixels = pixelRect(for: union)
         guard pixels.width >= 1, pixels.height >= 1 else { return nil }
 
@@ -445,88 +597,397 @@ final class SelectionOverlayView: NSView {
         return (composed, pixels, union)
     }
 
-    private func showActionBar(image: CGImage, pixelRect: CGRect, viewRect: CGRect) {
+    // MARK: - 内联编辑工具条
+
+    private enum BarEntry {
+        case tool(AnnotationTool)
+        case colors
+        case undo
+        case action(SelectionAction)
+        case separator
+    }
+
+    private static let palette: [(hex: String, name: String)] = [
+        ("#FF3B30", "红"),
+        ("#FFD60A", "黄"),
+        ("#34C759", "绿"),
+        ("#0A84FF", "蓝"),
+        ("#FFFFFF", "白"),
+        ("#000000", "黑"),
+    ]
+
+    private func showEditingToolbar(image: CGImage, pixelRect: CGRect, viewRect: CGRect) {
+        dismissEditing()
+
         pendingImage = image
         pendingPixelRect = pixelRect
-        actionBar?.removeFromSuperview()
+        editingViewRect = viewRect
 
-        let items: [(title: String, symbol: String, action: SelectionAction)] = [
-            (L10n.t("标注", "Annotate"), "pencil.tip.crop.circle", .annotate),
-            (L10n.t("复制", "Copy"), "doc.on.doc", .copy),
-            (L10n.t("保存", "Save"), "square.and.arrow.down", .save),
-            (L10n.t("滚动", "Scroll"), "arrow.up.and.down", .scroll),
-            ("OCR", "text.viewfinder", .ocr),
-            (L10n.t("二维码", "QR"), "qrcode", .qr),
-            (L10n.t("下载", "Download"), "arrow.down.circle", .download),
-            (L10n.t("钉图", "Pin"), "pin", .pin),
-        ]
-
-        let buttonWidth: CGFloat = 40
-        let buttonHeight: CGFloat = 30
-        let gap: CGFloat = 4
-        let padding: CGFloat = 6
-        let barWidth = padding * 2 + buttonWidth * CGFloat(items.count) + gap * CGFloat(items.count - 1)
-        let barHeight = buttonHeight + padding * 2
-
-        let bar = NSView(frame: .zero)
-        bar.wantsLayer = true
-        bar.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.82).cgColor
-        bar.layer?.cornerRadius = 8
-
-        var x = padding
-        for (index, item) in items.enumerated() {
-            let button = ToolbarIconButton(title: "", target: self, action: #selector(actionTapped(_:)))
-            button.tag = item.action.rawValue
-            button.isBordered = false
-            let configuration = NSImage.SymbolConfiguration(pointSize: 15, weight: .medium)
-            button.image = NSImage(
-                systemSymbolName: item.symbol,
-                accessibilityDescription: item.title
-            )?.withSymbolConfiguration(configuration)
-            button.imagePosition = .imageOnly
-            button.imageScaling = .scaleProportionallyDown
-            button.contentTintColor = .white
-            button.wantsLayer = true
-            button.layer?.cornerRadius = 4
-            button.baseBackground = item.action == .annotate
-                ? highlightColor
-                : .clear
-            button.toolTip = "\(item.title) (\(index + 1))"
-            button.frame = CGRect(x: x, y: padding, width: buttonWidth, height: buttonHeight)
-            bar.addSubview(button)
-            x += buttonWidth + gap
+        let document = EditorDocument()
+        let canvas = EditorCanvasView(image: image, document: document)
+        canvas.inlineMode = true
+        canvas.frame = viewRect
+        canvas.tool = .select
+        canvas.currentStyle = ToolStyleStore.style(for: .select)
+        canvas.onFinishRequest = { [weak self] in
+            self?.perform(.copy)
         }
-
-        let selection = viewRect
-
-        var originX = selection.midX - barWidth / 2
-        originX = min(max(originX, 8), bounds.width - barWidth - 8)
-
-        var originY: CGFloat
-        let barGap: CGFloat = 10
-        let required = barHeight + barGap
-        if selection.minY >= required + 8 {
-            // 选区下方有空间，放下面。
-            originY = selection.minY - required
-        } else if bounds.height - selection.maxY >= required + 8 {
-            // 下面不够，放上面。
-            originY = selection.maxY + barGap
-        } else {
-            // 选区几乎占满屏幕，贴着屏幕内缘。
-            originY = bounds.height - barHeight - 12
+        canvas.onCancelRequest = { [weak self] in
+            self?.onCancel?()
         }
-        originY = min(max(originY, 8), bounds.height - barHeight - 8)
-        bar.frame = CGRect(x: originX, y: originY, width: barWidth, height: barHeight)
-        addSubview(bar)
-        actionBar = bar
+        canvas.onSaveRequest = { [weak self] in
+            self?.perform(.save)
+        }
+        document.onChange = { [weak self] in
+            self?.canvas?.needsDisplay = true
+            self?.updateUndoState()
+        }
+        addSubview(canvas)
+        self.annotationDocument = document
+        self.canvas = canvas
+        lockButton?.isHidden = true
+        modeBar?.isHidden = true
+
+        buildToolbar(for: viewRect)
+        updateSizeLabel(for: viewRect)
+        updateUndoState()
+
+        window?.invalidateCursorRects(for: self)
+        window?.invalidateCursorRects(for: canvas)
+        NSCursor.arrow.set()
+        window?.makeFirstResponder(canvas)
         needsDisplay = true
     }
 
-    private func hideActionBar() {
+    private func buildToolbar(for selection: CGRect) {
+        let entries: [BarEntry] = [
+            .tool(.select),
+            .tool(.rectangle),
+            .tool(.ellipse),
+            .tool(.arrow),
+            .tool(.pencil),
+            .tool(.highlight),
+            .tool(.mosaic),
+            .tool(.counter),
+            .tool(.text),
+            .separator,
+            .colors,
+            .undo,
+            .separator,
+            .action(.copy),
+            .action(.save),
+            .action(.pin),
+            .action(.scroll),
+            .action(.ocr),
+            .action(.close),
+        ]
+
+        let buttonWidth: CGFloat = 30
+        let buttonHeight: CGFloat = 28
+        let gap: CGFloat = 3
+        let padding: CGFloat = 6
+        let separatorWidth: CGFloat = 7
+        let barHeight = buttonHeight + padding * 2
+
+        let swatchSize: CGFloat = 20
+        let swatchGap: CGFloat = 4
+        let paletteWidth = swatchSize * CGFloat(Self.palette.count)
+            + swatchGap * CGFloat(Self.palette.count - 1)
+
+        func width(of entry: BarEntry) -> CGFloat {
+            switch entry {
+            case .separator: return separatorWidth
+            case .colors: return paletteWidth
+            default: return buttonWidth
+            }
+        }
+
+        let totalWidth = entries.reduce(padding * 2) { $0 + width(of: $1) }
+            + gap * CGFloat(max(0, entries.count - 1))
+
+        let bar = ToolbarBarView(frame: .zero)
+        bar.wantsLayer = true
+        bar.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.84).cgColor
+        bar.layer?.cornerRadius = 8
+        bar.layer?.borderWidth = 1
+        bar.layer?.borderColor = NSColor.white.withAlphaComponent(0.12).cgColor
+
+        var x = padding
+        for entry in entries {
+            let w = width(of: entry)
+            switch entry {
+            case .separator:
+                let line = NSView(frame: CGRect(x: x + 3, y: padding + 4, width: 1, height: buttonHeight - 8))
+                line.wantsLayer = true
+                line.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.18).cgColor
+                bar.addSubview(line)
+
+            case .tool(let tool):
+                let button = ToolbarIconButton(title: "", target: self, action: #selector(toolTapped(_:)))
+                button.tag = AnnotationTool.allCases.firstIndex(of: tool) ?? 0
+                button.isBordered = false
+                let configuration = NSImage.SymbolConfiguration(pointSize: 14, weight: .medium)
+                button.image = NSImage(
+                    systemSymbolName: tool.symbolName,
+                    accessibilityDescription: tool.title
+                )?.withSymbolConfiguration(configuration)
+                button.imagePosition = .imageOnly
+                button.imageScaling = .scaleProportionallyDown
+                button.contentTintColor = .white
+                button.wantsLayer = true
+                button.layer?.cornerRadius = 4
+                button.toolTip = tool.title
+                button.frame = CGRect(x: x, y: padding, width: w, height: buttonHeight)
+                button.baseBackground = tool == .select
+                    ? NSColor.white.withAlphaComponent(0.18)
+                    : .clear
+                bar.addSubview(button)
+                toolButtons[tool] = button
+
+            case .colors:
+                colorSwatches.removeAll()
+                var swatchX = x
+                for (index, entry) in Self.palette.enumerated() {
+                    let swatch = ColorSwatchButton(
+                        title: "",
+                        target: self,
+                        action: #selector(colorSwatchTapped(_:))
+                    )
+                    swatch.tag = index
+                    swatch.isBordered = false
+                    swatch.wantsLayer = true
+                    swatch.layer?.cornerRadius = (swatchSize - 2) / 2
+                    swatch.swatchColor = NSColor(hex: entry.hex) ?? .systemRed
+                    swatch.swatchHex = entry.hex
+                    swatch.toolTip = L10n.t("颜色", "Color") + " · " + entry.name
+                    swatch.frame = CGRect(
+                        x: swatchX,
+                        y: padding + (buttonHeight - swatchSize) / 2,
+                        width: swatchSize,
+                        height: swatchSize
+                    )
+                    bar.addSubview(swatch)
+                    colorSwatches.append(swatch)
+                    swatchX += swatchSize + swatchGap
+                }
+
+            case .undo:
+                let button = ToolbarIconButton(title: "", target: self, action: #selector(undoTapped))
+                button.isBordered = false
+                let configuration = NSImage.SymbolConfiguration(pointSize: 14, weight: .medium)
+                button.image = NSImage(
+                    systemSymbolName: "arrow.uturn.backward",
+                    accessibilityDescription: L10n.t("撤销", "Undo")
+                )?.withSymbolConfiguration(configuration)
+                button.imagePosition = .imageOnly
+                button.contentTintColor = .white
+                button.wantsLayer = true
+                button.layer?.cornerRadius = 4
+                button.toolTip = L10n.t("撤销 (⌘Z)", "Undo (⌘Z)")
+                button.frame = CGRect(x: x, y: padding, width: w, height: buttonHeight)
+                bar.addSubview(button)
+                undoButton = button
+
+            case .action(let action):
+                let item = actionPresentation(action)
+                let button = ToolbarIconButton(title: "", target: self, action: #selector(actionTapped(_:)))
+                button.tag = action.rawValue
+                button.isBordered = false
+                let configuration = NSImage.SymbolConfiguration(pointSize: 14, weight: .medium)
+                button.image = NSImage(
+                    systemSymbolName: item.symbol,
+                    accessibilityDescription: item.title
+                )?.withSymbolConfiguration(configuration)
+                button.imagePosition = .imageOnly
+                button.imageScaling = .scaleProportionallyDown
+                button.contentTintColor = .white
+                button.wantsLayer = true
+                button.layer?.cornerRadius = 4
+                button.toolTip = item.tooltip
+                button.frame = CGRect(x: x, y: padding, width: w, height: buttonHeight)
+                if action == .copy {
+                    button.baseBackground = highlightColor
+                }
+                bar.addSubview(button)
+            }
+            x += w + gap
+        }
+
+        var originX = selection.midX - totalWidth / 2
+        originX = min(max(originX, 8), bounds.width - totalWidth - 8)
+
+        let barGap: CGFloat = 8
+        let topLimit = safeTopEdge - barHeight - 8
+        let bottomLimit = safeBottomEdge + 8
+        var originY: CGFloat
+        if selection.minY - barHeight - barGap >= bottomLimit {
+            // 选区下方有空间：放在下方（QQ / 微信截图的位置）。
+            originY = selection.minY - barHeight - barGap
+        } else if selection.maxY + barHeight + barGap <= topLimit + barHeight {
+            // 下方不够，放选区上方。
+            originY = selection.maxY + barGap
+        } else {
+            // 选区几乎占满屏幕（含全屏）：贴在 Dock 上方，避开刘海。
+            originY = bottomLimit
+        }
+        originY = min(max(originY, bottomLimit), topLimit)
+
+        bar.frame = CGRect(x: originX, y: originY, width: totalWidth, height: barHeight)
+        addSubview(bar)
+        actionBar = bar
+
+        updateToolSelection()
+    }
+
+    private func actionPresentation(_ action: SelectionAction) -> (title: String, symbol: String, tooltip: String) {
+        switch action {
+        case .copy:
+            return (
+                L10n.t("复制", "Copy"),
+                "doc.on.doc",
+                L10n.t("复制到剪贴板并退出 (Enter / ⌘C)", "Copy and exit (Enter / ⌘C)")
+            )
+        case .save:
+            return (
+                L10n.t("保存", "Save"),
+                "square.and.arrow.down",
+                L10n.t("保存到文件夹 (⌘S)", "Save to folder (⌘S)")
+            )
+        case .pin:
+            return (L10n.t("钉图", "Pin"), "pin", L10n.t("钉在屏幕上", "Pin on screen"))
+        case .scroll:
+            return (L10n.t("滚动截图", "Scroll"), "arrow.up.and.down", L10n.t("滚动截图", "Scrolling capture"))
+        case .ocr:
+            return ("OCR", "text.viewfinder", L10n.t("识别文字", "Recognize text"))
+        case .close:
+            return (L10n.t("关闭", "Close"), "xmark", L10n.t("取消截图 (Esc)", "Cancel capture (Esc)"))
+        }
+    }
+
+    private func updateToolSelection() {
+        let active = canvas?.tool ?? .select
+        for (tool, button) in toolButtons {
+            button.baseBackground = tool == active
+                ? NSColor.white.withAlphaComponent(0.18)
+                : .clear
+        }
+        let activeHex = canvas.map { ToolStyleStore.style(for: $0.tool).colorHex }
+        for swatch in colorSwatches {
+            swatch.isActive = swatch.swatchHex == activeHex
+        }
+    }
+
+    private func updateUndoState() {
+        undoButton?.isEnabled = annotationDocument?.canUndo ?? false
+    }
+
+    private func updateSizeLabel(for rect: CGRect) {
+        sizeLabel?.removeFromSuperview()
+        sizeLabel = nil
+
+        guard let pixelRect = pendingPixelRect else { return }
+        let text = "\(Int(pixelRect.width)) × \(Int(pixelRect.height))"
+        let label = NSTextField(labelWithString: text)
+        label.font = .monospacedDigitSystemFont(ofSize: 11, weight: .medium)
+        label.textColor = .white
+        label.isBezeled = false
+        label.isEditable = false
+        label.drawsBackground = false
+        let textSize = label.sizeThatFits(NSSize(width: 240, height: 20))
+
+        let container = NSView(frame: CGRect(
+            x: 0,
+            y: 0,
+            width: textSize.width + 14,
+            height: textSize.height + 6
+        ))
+        container.wantsLayer = true
+        container.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.75).cgColor
+        container.layer?.cornerRadius = 4
+        label.frame = CGRect(x: 7, y: 3, width: textSize.width, height: textSize.height)
+        container.addSubview(label)
+
+        var originY = rect.maxY - container.frame.height - 8
+        if originY < rect.minY + 2 {
+            originY = rect.maxY + 6
+        }
+        originY = min(max(originY, 8), bounds.height - container.frame.height - 8)
+        let originX = min(
+            max(rect.minX + 8, 8),
+            bounds.width - container.frame.width - 8
+        )
+        container.frame.origin = CGPoint(x: originX, y: originY)
+        addSubview(container)
+        sizeLabel = container
+    }
+
+    private func dismissEditing() {
+        canvas?.commitPendingText()
+        canvas?.removeFromSuperview()
+        canvas = nil
+        annotationDocument = nil
         actionBar?.removeFromSuperview()
         actionBar = nil
+        sizeLabel?.removeFromSuperview()
+        sizeLabel = nil
+        toolButtons.removeAll()
+        undoButton = nil
+        colorSwatches.removeAll()
         pendingImage = nil
         pendingPixelRect = nil
+        editingViewRect = nil
+        lockButton?.isHidden = false
+        modeBar?.isHidden = scrollMode
+        window?.invalidateCursorRects(for: self)
+        NSCursor.crosshair.set()
+    }
+
+    private func bakeImage() -> CGImage? {
+        guard let image = pendingImage else { return nil }
+        let annotations = annotationDocument?.annotations ?? []
+
+        let settings = AppSettings.shared
+        let options = ExportOptions(
+            scale: settings.exportScale1x ? 0.5 : 1,
+            cornerRadius: CGFloat(settings.exportCornerRadius),
+            shadow: settings.exportShadow,
+            shadowBlur: CGFloat(settings.exportShadowBlur),
+            shadowOpacity: settings.exportShadowOpacity,
+            shadowColorHex: settings.exportShadowColorHex,
+            transparent: settings.exportTransparent
+        )
+        return EditorRenderer.render(image: image, annotations: annotations, options: options) ?? image
+    }
+
+    @objc private func toolTapped(_ sender: NSButton) {
+        let tools = AnnotationTool.allCases
+        guard tools.indices.contains(sender.tag) else { return }
+        canvas?.commitPendingText()
+        let tool = tools[sender.tag]
+        canvas?.tool = tool
+        if let canvas {
+            canvas.currentStyle = ToolStyleStore.style(for: tool)
+        }
+        updateToolSelection()
+    }
+
+    @objc private func colorSwatchTapped(_ sender: ColorSwatchButton) {
+        guard let canvas else { return }
+        let target: AnnotationTool = canvas.tool.isDrawingTool ? canvas.tool : .rectangle
+        var style = ToolStyleStore.style(for: target)
+        style.colorHex = sender.swatchHex
+        ToolStyleStore.save(style, for: target)
+        if target == canvas.tool {
+            canvas.currentStyle = style
+        }
+        updateToolSelection()
+    }
+
+    @objc private func undoTapped() {
+        annotationDocument?.undo()
+        canvas?.select(id: nil)
+        canvas?.needsDisplay = true
+        updateUndoState()
     }
 
     @objc private func actionTapped(_ sender: NSButton) {
@@ -536,28 +997,16 @@ final class SelectionOverlayView: NSView {
 
     private func perform(_ action: SelectionAction) {
         guard let image = pendingImage, let pixelRect = pendingPixelRect else { return }
-        hideActionBar()
-        onAction?(action, image, pixelRect)
-    }
-
-    private func actionForKeyCode(_ keyCode: UInt16) -> SelectionAction? {
-        switch keyCode {
-        case 18: return .annotate
-        case 19: return .copy
-        case 20: return .save
-        case 21: return .scroll
-        case 23: return .ocr
-        case 22: return .qr
-        case 26: return .download
-        case 28: return .pin
-        default: return nil
+        // 复制/保存之前把正在输入的文字落成标注，避免漏字。
+        canvas?.commitPendingText()
+        switch action {
+        case .close:
+            onCancel?()
+        case .copy, .save, .pin:
+            onAction?(action, bakeImage() ?? image, pixelRect)
+        case .scroll, .ocr:
+            onAction?(action, image, pixelRect)
         }
-    }
-
-    private func performPendingAction() {
-        guard let image = pendingImage, let pixelRect = pendingPixelRect else { return }
-        hideActionBar()
-        onAction?(.annotate, image, pixelRect)
     }
 
     private func drawSnapGuides() {
@@ -591,8 +1040,8 @@ final class SelectionOverlayView: NSView {
         } else if allowsWindowPicking {
             if selectedWindows.isEmpty {
                 text = L10n.t(
-                    "移动高亮窗口 · 点击截窗口 · Shift 多选 · 拖拽截区域 · 点空白截全屏 · Esc 取消",
-                    "Hover a window · Click to capture · Shift to multi-select · Drag a region · Click desktop for full screen · Esc cancels"
+                    "拖拽选择区域 · 点击窗口直接截取 · Esc 取消",
+                    "Drag to select · Click a window to capture it · Esc cancels"
                 )
             } else {
                 text = L10n.t("已选 ", "Selected ") + "\(selectedWindows.count) " + L10n.t(
@@ -608,8 +1057,12 @@ final class SelectionOverlayView: NSView {
             .foregroundColor: NSColor.white,
         ]
         let size = (text as NSString).size(withAttributes: attributes)
-        let hintOffset: CGFloat = scrollMode ? 104 : 40
-        let origin = CGPoint(x: (bounds.width - size.width - 24) / 2, y: bounds.height - size.height - hintOffset)
+        let modeBarVisible = !(modeBar?.isHidden ?? true)
+        let hintOffset: CGFloat = scrollMode ? 104 : (modeBarVisible ? 96 : 40)
+        let origin = CGPoint(
+            x: (bounds.width - size.width - 24) / 2,
+            y: safeTopEdge - size.height - hintOffset
+        )
         let background = NSRect(x: origin.x, y: origin.y - 8, width: size.width + 24, height: size.height + 16)
         NSColor.black.withAlphaComponent(0.65).setFill()
         NSBezierPath(roundedRect: background, xRadius: 8, yRadius: 8).fill()
@@ -649,7 +1102,7 @@ final class SelectionOverlayView: NSView {
         let pixel = imagePoint(point)
         currentColor = sampler?.color(atX: Int(pixel.x), y: Int(pixel.y))
 
-        if allowsWindowPicking, dragStart == nil, selection.width == 0 {
+        if allowsWindowPicking, dragStart == nil, selection.width == 0, !isEditing {
             hoveredWindowIndex = topmostWindowIndex(at: point)
         }
         needsDisplay = true
@@ -662,10 +1115,16 @@ final class SelectionOverlayView: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {
-        if actionBar != nil {
-            hideActionBar()
-        }
         let raw = convert(event.locationInWindow, from: nil)
+
+        if isEditing {
+            // 内联画布只盖住选区本身；这里收到的是选区外的点击：开始重新框选。
+            dismissEditing()
+            selection = .zero
+            dragStart = nil
+            needsDisplay = true
+        }
+
         if allowsWindowPicking, !scrollMode,
            event.modifierFlags.contains(.shift),
            let index = topmostWindowIndex(at: raw),
@@ -769,14 +1228,14 @@ final class SelectionOverlayView: NSView {
             }
             if showsActionBar {
                 if let index = hoveredWindowIndex, windowHits.indices.contains(index) {
-                    let viewRect = windowHits[index].rect
+                    let viewRect = windowHits[index].rect.intersection(bounds)
                     let rect = pixelRect(for: viewRect)
-                    if let cropped = image.cropping(to: rect) {
-                        showActionBar(image: cropped, pixelRect: rect, viewRect: viewRect)
+                    if viewRect.width >= 1, viewRect.height >= 1, let cropped = image.cropping(to: rect) {
+                        showEditingToolbar(image: cropped, pixelRect: rect, viewRect: viewRect)
                     }
                 } else {
                     let full = CGRect(x: 0, y: 0, width: image.width, height: image.height)
-                    showActionBar(image: image, pixelRect: full, viewRect: bounds)
+                    showEditingToolbar(image: image, pixelRect: full, viewRect: bounds)
                 }
                 return
             }
@@ -800,7 +1259,7 @@ final class SelectionOverlayView: NSView {
             return
         }
         if showsActionBar {
-            showActionBar(image: cropped, pixelRect: pixels, viewRect: selection)
+            showEditingToolbar(image: cropped, pixelRect: pixels, viewRect: selection)
         } else {
             onComplete?(cropped, pixels)
         }
@@ -811,8 +1270,9 @@ final class SelectionOverlayView: NSView {
     }
 
     override func keyDown(with event: NSEvent) {
-        if actionBar != nil, let action = actionForKeyCode(event.keyCode) {
-            perform(action)
+        if isEditing {
+            if handleEditingShortcut(event) { return }
+            super.keyDown(with: event)
             return
         }
 
@@ -828,7 +1288,10 @@ final class SelectionOverlayView: NSView {
                 flashStatus(L10n.t("已复制", "Copied") + " \(hex)")
             }
         case 123, 124, 125, 126:
-            guard selection.width > 0, selection.height > 0 else { return }
+            guard selection.width > 0, selection.height > 0 else {
+                super.keyDown(with: event)
+                return
+            }
             switch event.keyCode {
             case 123: selection = selection.offsetBy(dx: -step, dy: 0)
             case 124: selection = selection.offsetBy(dx: step, dy: 0)
@@ -852,23 +1315,11 @@ final class SelectionOverlayView: NSView {
                 onPickWindow?(windowHits[index].window)
             }
         case 53: // Esc
-            if actionBar != nil {
-                hideActionBar()
-                needsDisplay = true
-            } else if !selectedWindows.isEmpty {
-                selectedWindows.removeAll()
-                needsDisplay = true
-            } else {
-                onCancel?()
-            }
+            onCancel?()
         case 36, 76: // Return / Enter
-            if actionBar != nil {
-                performPendingAction()
-                return
-            }
             if !selectedWindows.isEmpty {
                 if let composed = compositeSelectedWindows() {
-                    showActionBar(
+                    showEditingToolbar(
                         image: composed.image,
                         pixelRect: composed.pixelRect,
                         viewRect: composed.viewRect
@@ -879,12 +1330,40 @@ final class SelectionOverlayView: NSView {
             if selection.width >= 2, selection.height >= 2 {
                 let pixels = pixelRect(for: selection)
                 if let cropped = image.cropping(to: pixels) {
-                    onComplete?(cropped, pixels)
+                    showEditingToolbar(image: cropped, pixelRect: pixels, viewRect: selection)
                 }
             }
         default:
             super.keyDown(with: event)
         }
+    }
+
+    private func handleEditingShortcut(_ event: NSEvent) -> Bool {
+        let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        switch event.keyCode {
+        case 36, 76:
+            perform(.copy)
+            return true
+        case 53:
+            onCancel?()
+            return true
+        default:
+            break
+        }
+
+        if mods.contains(.command), let key = event.charactersIgnoringModifiers?.lowercased() {
+            switch key {
+            case "c":
+                perform(.copy)
+                return true
+            case "s":
+                perform(.save)
+                return true
+            default:
+                break
+            }
+        }
+        return false
     }
 
     // MARK: - Magnifier
@@ -1041,12 +1520,52 @@ final class SelectionOverlayView: NSView {
 }
 
 
+final class ToolbarBarView: NSView {
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: .arrow)
+    }
+}
+
+final class CursorButton: NSButton {
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: .pointingHand)
+    }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+}
+
+final class ColorSwatchButton: NSButton {
+    var swatchHex: String = ""
+    var swatchColor: NSColor = .systemRed {
+        didSet { layer?.backgroundColor = swatchColor.cgColor }
+    }
+    var isActive: Bool = false {
+        didSet {
+            layer?.borderWidth = isActive ? 2.5 : 1
+            layer?.borderColor = (isActive
+                ? NSColor.white
+                : NSColor.black.withAlphaComponent(0.5)).cgColor
+        }
+    }
+
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: .pointingHand)
+    }
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+}
+
 final class ToolbarIconButton: NSButton {
     var baseBackground: NSColor = .clear {
         didSet { layer?.backgroundColor = baseBackground.cgColor }
     }
 
     private var hovered = false
+
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: .pointingHand)
+    }
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()

@@ -333,14 +333,20 @@ final class ScrollCaptureSession: NSObject {
 
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(200))
-            closeWindows()
 
             let scrolled = stitcher.stitchedLength > stitcher.baseLength + 4
             guard scrolled, let image = stitcher.makeImage() else {
-                presentNoScrollAlert()
-                onCancel?()
+                // 没滚动起来不弹模态框：留在 HUD 里提示，用户放慢速度再试。
+                isFinishing = false
+                statusLabel?.stringValue = L10n.t(
+                    "没有检测到滚动，请放慢速度再试一次",
+                    "No scrolling detected. Scroll slower and try again."
+                )
+                NSSound.beep()
+                startPolling()
                 return
             }
+            closeWindows()
             onFinish?(image)
         }
     }
@@ -354,15 +360,6 @@ final class ScrollCaptureSession: NSObject {
         onCancel?()
     }
 
-    private func presentNoScrollAlert() {
-        let alert = NSAlert()
-        alert.alertStyle = .warning
-        alert.messageText = L10n.t("没有检测到滚动", "No Scrolling Detected")
-        alert.informativeText = L10n.t("请在选区内向下滚动页面，再点「完成」。如果滚得太快，可以放慢一点重试。", "Scroll inside the selected area, then click Done. If you scroll too fast, slow down and try again.")
-        alert.addButton(withTitle: L10n.t("好", "OK"))
-        NSApp.activate(ignoringOtherApps: true)
-        alert.runModal()
-    }
 }
 
 @MainActor

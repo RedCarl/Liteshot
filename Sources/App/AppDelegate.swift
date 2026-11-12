@@ -12,6 +12,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         setupStatusItem()
         setUpHotKeys()
         handleDebugArguments()
+
+        // 只做非侵入式检查；没有权限时显示专用权限窗口，不主动拉系统 TCC 弹窗。
+        if !ScreenPermission.isGranted,
+           !UserDefaults.standard.bool(forKey: "settings.permissionSuppressOnLaunch") {
+            PermissionWindowController.shared.show()
+        }
     }
 
     private func setupMainMenu() {
@@ -42,6 +48,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             button.toolTip = L10n.t("Liteshot · 开始截图 ", "Liteshot · Start Capture ") + shortcut
         }
 
+        // 截图相关的模式与动作全部收进悬浮工具条；菜单只保留入口和 App 级操作。
         let menu = NSMenu()
 
         let captureShortcut = AppSettings.shared.regionShortcut
@@ -49,68 +56,52 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             title: L10n.t("开始截图", "Start Capture"),
             action: #selector(captureAdaptive),
             key: captureShortcut.menuKeyEquivalent,
-            modifiers: captureShortcut.menuModifiers
+            modifiers: captureShortcut.menuModifiers,
+            symbol: "camera.viewfinder"
         ))
-        menu.addItem(menuItem(title: L10n.t("截图复制", "Capture and Copy"), action: #selector(captureCopy)))
+        menu.addItem(menuItem(
+            title: L10n.t("截图历史", "Capture History"),
+            action: #selector(openHistory),
+            symbol: "clock.arrow.circlepath"
+        ))
+        menu.addItem(menuItem(
+            title: L10n.t("贴图（从剪贴板）", "Pin from Clipboard"),
+            action: #selector(pinFromClipboard),
+            symbol: "pin"
+        ))
+        menu.addItem(menuItem(
+            title: L10n.t("隐藏/显示所有贴图", "Hide/Show All Pins"),
+            action: #selector(togglePins),
+            symbol: "pin.slash"
+        ))
 
-        menu.addItem(menuItem(title: L10n.t("滚动截图", "Scrolling Capture"), action: #selector(captureScroll)))
+        menu.addItem(.separator())
+        menu.addItem(menuItem(
+            title: L10n.t("设置…", "Settings…"),
+            action: #selector(openSettings),
+            key: ",",
+            modifiers: [.command],
+            symbol: "gearshape"
+        ))
 
-        let moreItem = NSMenuItem(title: L10n.t("更多截图", "More Capture Modes"), action: nil, keyEquivalent: "")
-        let moreMenu = NSMenu(title: L10n.t("更多截图", "More Capture Modes"))
-        moreMenu.addItem(menuItem(title: L10n.t("全屏截图", "Full Screen"), action: #selector(captureFullScreen)))
-        moreMenu.addItem(menuItem(title: L10n.t("截取活动窗口", "Capture Active Window"), action: #selector(captureActiveWindow)))
-        moreMenu.addItem(menuItem(title: L10n.t("截取上一次区域", "Capture Last Area"), action: #selector(captureLastArea)))
-        moreMenu.addItem(menuItem(title: L10n.t("截取上一次区域并保存", "Capture Last Area and Save"), action: #selector(captureLastAreaAndSave)))
-        moreMenu.addItem(menuItem(title: L10n.t("截取上一次区域并复制", "Capture Last Area and Copy"), action: #selector(captureLastAreaAndCopy)))
-        let delayItem = NSMenuItem(title: L10n.t("延迟截图", "Delayed Capture"), action: nil, keyEquivalent: "")
-        let delayMenu = NSMenu(title: L10n.t("延迟截图", "Delayed Capture"))
-        delayMenu.addItem(menuItem(title: L10n.t("3 秒", "3 seconds"), action: #selector(captureDelayed3)))
-        delayMenu.addItem(menuItem(title: L10n.t("5 秒", "5 seconds"), action: #selector(captureDelayed5)))
-        delayMenu.addItem(menuItem(title: L10n.t("10 秒", "10 seconds"), action: #selector(captureDelayed10)))
-        delayItem.submenu = delayMenu
-        moreMenu.addItem(delayItem)
-        moreMenu.addItem(menuItem(title: L10n.t("跨屏区域截图", "Cross-Display Region"), action: #selector(captureCrossScreen)))
-        moreMenu.addItem(.separator())
-        moreMenu.addItem(menuItem(title: L10n.t("上一张截图", "Previous Screenshot"), action: #selector(openPreviousScreenshot)))
-        moreMenu.addItem(menuItem(title: L10n.t("下一张截图", "Next Screenshot"), action: #selector(openNextScreenshot)))
-        moreItem.submenu = moreMenu
-        menu.addItem(moreItem)
-        // 保留 OCR / 二维码为快捷动作。
-        menu.addItem(menuItem(title: L10n.t("截图 OCR", "Text OCR"), action: #selector(captureOCR)))
-        menu.addItem(menuItem(title: L10n.t("静默 OCR", "Silent OCR"), action: #selector(captureSilentOCR)))
-        menu.addItem(menuItem(title: L10n.t("显示 OCR 窗口", "Show OCR Window"), action: #selector(showOCRWindow)))
-        menu.addItem(menuItem(title: L10n.t("上一个 OCR 结果", "Previous OCR Result"), action: #selector(showPreviousOCR)))
-        menu.addItem(menuItem(title: L10n.t("下一个 OCR 结果", "Next OCR Result"), action: #selector(showNextOCR)))
-        let newlineItem = menuItem(
-            title: L10n.t("保留 OCR 文字换行", "Preserve OCR Line Breaks"),
-            action: #selector(toggleOCRNewlines)
+        menu.addItem(.separator())
+        menu.addItem(menuItem(
+            title: L10n.t("检查更新…", "Check for Updates…"),
+            action: #selector(checkForUpdates),
+            symbol: "arrow.triangle.2.circlepath"
+        ))
+        menu.addItem(menuItem(
+            title: L10n.t("关于 Liteshot", "About Liteshot"),
+            action: #selector(openAbout),
+            symbol: "info.circle"
+        ))
+        let quitItem = NSMenuItem(
+            title: L10n.t("退出 Liteshot", "Quit Liteshot"),
+            action: #selector(NSApplication.terminate(_:)),
+            keyEquivalent: "q"
         )
-        newlineItem.state = AppSettings.shared.ocrPreserveNewlines ? .on : .off
-        menu.addItem(newlineItem)
-
-        let appendItem = menuItem(
-            title: L10n.t("增量添加到剪贴板", "Append OCR to Clipboard"),
-            action: #selector(toggleOCRAppend)
-        )
-        appendItem.state = AppSettings.shared.ocrAppendToClipboard ? .on : .off
-        menu.addItem(appendItem)
-        menu.addItem(menuItem(title: L10n.t("截图二维码", "QR / Barcode"), action: #selector(captureQR)))
-
-        menu.addItem(.separator())
-        menu.addItem(menuItem(title: L10n.t("贴图（从剪贴板）", "Pin from Clipboard"), action: #selector(pinFromClipboard)))
-        menu.addItem(menuItem(title: L10n.t("隐藏/显示所有贴图", "Hide/Show All Pins"), action: #selector(togglePins)))
-        menu.addItem(menuItem(title: L10n.t("截图历史", "Capture History"), action: #selector(openHistory)))
-
-        menu.addItem(.separator())
-
-        let settingsItem = menuItem(title: L10n.t("设置…", "Settings…"), action: #selector(openSettings), key: ",", modifiers: [.command])
-        menu.addItem(settingsItem)
-        menu.addItem(menuItem(title: L10n.t("屏幕录制权限…", "Screen Recording Permission…"), action: #selector(openScreenRecordingSettings)))
-
-        menu.addItem(.separator())
-        menu.addItem(menuItem(title: L10n.t("检查更新…", "Check for Updates…"), action: #selector(checkForUpdates)))
-        menu.addItem(menuItem(title: L10n.t("关于 Liteshot", "About Liteshot"), action: #selector(openAbout)))
-        menu.addItem(NSMenuItem(title: L10n.t("退出 Liteshot", "Quit Liteshot"), action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+        quitItem.image = menuImage("power")
+        menu.addItem(quitItem)
 
         item.menu = menu
         statusItem = item
@@ -120,12 +111,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         title: String,
         action: Selector,
         key: String = "",
-        modifiers: NSEvent.ModifierFlags = []
+        modifiers: NSEvent.ModifierFlags = [],
+        symbol: String? = nil
     ) -> NSMenuItem {
         let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
         item.target = self
         item.keyEquivalentModifierMask = modifiers
+        if let symbol {
+            item.image = menuImage(symbol)
+        }
         return item
+    }
+
+    private func menuImage(_ symbol: String) -> NSImage? {
+        let configuration = NSImage.SymbolConfiguration(pointSize: 13, weight: .regular)
+        let image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
+            .withSymbolConfiguration(configuration)
+        image?.isTemplate = true
+        return image
     }
 
     private func setUpHotKeys() {
@@ -325,10 +328,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         SettingsWindowController.shared.show()
     }
 
-    @objc private func openScreenRecordingSettings() {
-        CaptureCoordinator.shared.showPermissionGuide()
-    }
-
     // MARK: - Debug hooks
 
     private static func makeDemoPinImage() -> CGImage? {
@@ -354,6 +353,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func handleDebugArguments() {
         #if DEBUG
+        if CommandLine.arguments.contains("--open-menu") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+                self?.statusItem?.button?.performClick(nil)
+            }
+        }
+
         if CommandLine.arguments.contains("--open-settings") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 SettingsWindowController.shared.show()

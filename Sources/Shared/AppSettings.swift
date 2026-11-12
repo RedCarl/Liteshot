@@ -53,10 +53,6 @@ final class AppSettings: ObservableObject {
         didSet { store.set(copyToClipboard, forKey: Keys.copyToClipboard) }
     }
 
-    @Published var openEditorAfterCapture: Bool {
-        didSet { store.set(openEditorAfterCapture, forKey: Keys.openEditorAfterCapture) }
-    }
-
     @Published var revealInFinder: Bool {
         didSet { store.set(revealInFinder, forKey: Keys.revealInFinder) }
     }
@@ -157,7 +153,6 @@ final class AppSettings: ObservableObject {
         static let jpegQuality = "settings.jpegQuality"
         static let autoSave = "settings.autoSave"
         static let copyToClipboard = "settings.copyToClipboard"
-        static let openEditorAfterCapture = "settings.openEditorAfterCapture"
         static let revealInFinder = "settings.revealInFinder"
         static let delaySeconds = "settings.delaySeconds"
         static let includeCursor = "settings.includeCursor"
@@ -190,7 +185,6 @@ final class AppSettings: ObservableObject {
         jpegQuality = defaults.object(forKey: Keys.jpegQuality) as? Double ?? 0.9
         autoSave = defaults.bool(forKey: Keys.autoSave)
         copyToClipboard = defaults.object(forKey: Keys.copyToClipboard) as? Bool ?? true
-        openEditorAfterCapture = defaults.object(forKey: Keys.openEditorAfterCapture) as? Bool ?? true
         revealInFinder = defaults.bool(forKey: Keys.revealInFinder)
         delaySeconds = defaults.object(forKey: Keys.delaySeconds) as? Int ?? 5
         includeCursor = defaults.bool(forKey: Keys.includeCursor)

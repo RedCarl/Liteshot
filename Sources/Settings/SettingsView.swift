@@ -144,14 +144,6 @@ struct SettingsView: View {
                 }
 
                 Section(header: Text(tr("截图", "Capture"))) {
-                    Toggle(tr("截图后进入标注编辑器", "Open Annotation Editor after Capture"), isOn: $settings.openEditorAfterCapture)
-                    Text(tr(
-                        "开启后自动保存不会立即执行，可在编辑器里复制或保存。",
-                        "When enabled, auto save is deferred; copy or save from the editor."
-                    ))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
                     Picker(selection: $settings.delaySeconds) {
                         Text(tr("不延迟", "No Delay")).tag(0)
                         Text(tr("3 秒", "3 seconds")).tag(3)

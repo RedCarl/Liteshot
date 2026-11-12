@@ -46,7 +46,6 @@ final class CaptureCoordinator {
     private var scrollSession: ScrollCaptureSession?
     private var crossScreenController: CrossScreenCaptureController?
     private var pendingScrollStrategy: ScrollStrategy = .vertical
-    private var inlineEditor: EditorViewController?
     private var isCapturing = false
 
     private init() {}
@@ -63,13 +62,13 @@ final class CaptureCoordinator {
         guard !isCapturing, overlayWindow == nil, countdownWindow == nil,
               scrollSession == nil, crossScreenController == nil else { return }
 
-        Task { @MainActor in
-            guard await ScreenPermission.probe() else {
-                self.showPermissionGuide()
-                return
-            }
-            self.beginAfterPermission(mode, delayOverride: delayOverride)
+        // 先用非侵入式接口判断；没权限只弹应用自己的权限窗口，
+        // 系统 TCC 弹窗留到用户点「打开设置」时再触发。
+        guard ScreenPermission.isGranted else {
+            PermissionWindowController.shared.show()
+            return
         }
+        beginAfterPermission(mode, delayOverride: delayOverride)
     }
 
     private func beginAfterPermission(_ mode: CaptureMode, delayOverride: Int?) {
@@ -181,39 +180,6 @@ final class CaptureCoordinator {
             return
         }
         commit(cropped)
-    }
-
-    private func showInlineEditor(image: CGImage, on screen: NSScreen) {
-        guard let window = overlayWindow else { return }
-        let editor = EditorViewController(image: image)
-        editor.onCloseRequest = { [weak self] in
-            self?.inlineEditor = nil
-            self?.dismissOverlay(hideApp: true)
-        }
-        inlineEditor = editor
-
-        let editorView = editor.view
-        editorView.frame = window.contentView?.bounds ?? NSRect(origin: .zero, size: screen.frame.size)
-        editorView.autoresizingMask = [.width, .height]
-        window.contentView = editorView
-        window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
-        window.makeFirstResponder(editorView)
-    }
-
-    private func saveToDownloads(_ image: CGImage) {
-        guard let png = ImageEncoding.pngData(from: image) else { return }
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyyMMdd-HHmmss"
-        let directory = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
-            ?? FileManager.default.homeDirectoryForCurrentUser
-        let url = directory.appendingPathComponent("Liteshot-\(formatter.string(from: Date())).png")
-        do {
-            try png.write(to: url)
-            NSSound(named: "Glass")?.play()
-        } catch {
-            NSSound.beep()
-        }
     }
 
     private func startLastAreaSave() async throws {
@@ -616,12 +582,20 @@ final class CaptureCoordinator {
         }
         view.onScrollDirectionChanged = onScrollDirectionChanged
         view.onScrollRegionSelected = onScrollRegionSelected
+        view.onRequestCaptureMode = { [weak self] mode in
+            guard let self else { return }
+            self.dismissOverlay(hideApp: false)
+            self.begin(mode)
+        }
+        view.onRequestHistory = { [weak self] in
+            guard let self else { return }
+            self.dismissOverlay(hideApp: false)
+            HistoryWindowController.shared.show()
+        }
         if allowsWindowPicking, !scrollMode {
             view.onAction = { [weak self] action, image, pixelRect in
                 guard let self else { return }
                 switch action {
-                case .annotate:
-                    self.showInlineEditor(image: image, on: screen)
                 case .copy:
                     self.dismissOverlay(hideApp: true)
                     ClipboardService.copy(image: image)
@@ -649,15 +623,11 @@ final class CaptureCoordinator {
                 case .ocr:
                     self.dismissOverlay(hideApp: false)
                     self.runRecognition(on: image, mode: .ocr)
-                case .qr:
-                    self.dismissOverlay(hideApp: false)
-                    self.runRecognition(on: image, mode: .qr)
-                case .download:
-                    self.dismissOverlay(hideApp: true)
-                    self.saveToDownloads(image)
                 case .pin:
                     self.dismissOverlay(hideApp: true)
                     PinManager.shared.pin(image)
+                case .close:
+                    self.dismissOverlay(hideApp: true)
                 }
             }
         }
@@ -791,10 +761,11 @@ final class CaptureCoordinator {
     private func makeOverlayWindow(on screen: NSScreen) -> NSWindow {
         let window = OverlayWindow(
             contentRect: screen.frame,
-            styleMask: .borderless,
+            styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
+        window.becomesKeyOnlyIfNeeded = false
         window.level = .screenSaver
         window.backgroundColor = .clear
         window.isOpaque = false
@@ -807,9 +778,12 @@ final class CaptureCoordinator {
     }
 
     private func showOverlay(_ window: NSWindow, firstResponder: NSView) {
+        NSApp.unhide(nil)
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
+        window.makeKey()
         window.makeFirstResponder(firstResponder)
+        NSRunningApplication.current.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
         overlayWindow = window
     }
 
@@ -821,10 +795,11 @@ final class CaptureCoordinator {
 
         let window = OverlayWindow(
             contentRect: screen.frame,
-            styleMask: .borderless,
+            styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
+        window.becomesKeyOnlyIfNeeded = false
         window.level = .screenSaver
         window.backgroundColor = .clear
         window.isOpaque = false
@@ -857,13 +832,6 @@ final class CaptureCoordinator {
     private func commit(_ image: CGImage) {
         let settings = AppSettings.shared
         HistoryStore.shared.record(image)
-
-        if settings.openEditorAfterCapture {
-            NSSound(named: "Glass")?.play()
-            dismissOverlay(hideApp: false)
-            EditorWindowController.open(image: image)
-            return
-        }
 
         let exportOptions = ExportOptions(
             scale: settings.exportScale1x ? 0.5 : 1,
@@ -913,8 +881,9 @@ final class CaptureCoordinator {
 
         NSCursor.arrow.set()
         if hideApp {
-            // 把焦点还给用户原来的 App（menu bar App 本身没有窗口）。
-            NSApp.hide(nil)
+            // 把焦点还给用户原来的 App；用 deactivate 而不是 hide，
+            // 否则已有的钉图窗口会跟着整个 App 一起被隐藏。
+            NSApp.deactivate()
         }
     }
 
@@ -945,48 +914,40 @@ final class CaptureCoordinator {
         return CGRect(x: x, y: y, width: cgRect.width, height: cgRect.height)
     }
 
-    func showPermissionGuide() {
-        let path = ScreenPermission.appPath
-        let alert = NSAlert()
-        alert.alertStyle = .warning
-        alert.messageText = L10n.t("需要屏幕录制权限", "Screen Recording Permission Required")
-        alert.informativeText = L10n.t(
-            "当前 App：\(path)\n\n请在 系统设置 → 隐私与安全性 → 屏幕与系统音频录制 中勾选 Liteshot。\n如果列表里已有旧的 Liteshot 条目，先移除它，再用「+」添加当前 App；授权后必须退出并重启 Liteshot。\n\n提示：未签名的旧版本可能无法保存授权，请使用最新构建。",
-            "Current app: \(path)\n\nEnable Liteshot in System Settings → Privacy & Security → Screen & System Audio Recording.\nIf an old Liteshot entry exists, remove it and add the current app with “+”. You must quit and relaunch Liteshot after granting access.\n\nNote: older unsigned builds may fail to persist the grant; use the latest build."
-        )
-        alert.addButton(withTitle: L10n.t("重新检查", "Check Again"))
-        alert.addButton(withTitle: L10n.t("打开系统设置", "Open System Settings"))
-        alert.addButton(withTitle: L10n.t("退出并重启", "Quit and Relaunch"))
-        alert.addButton(withTitle: L10n.t("取消", "Cancel"))
-
-        NSApp.activate(ignoringOtherApps: true)
-        switch alert.runModal() {
-        case .alertFirstButtonReturn:
-            Task { @MainActor in
-                if await ScreenPermission.probe() {
-                    perform(.region)
-                } else {
-                    showPermissionGuide()
-                }
-            }
-        case .alertSecondButtonReturn:
-            _ = ScreenPermission.request()
-            ScreenPermission.openSystemSettings()
-        case .alertThirdButtonReturn:
-            ScreenPermission.relaunchApp()
-        default:
-            break
-        }
-    }
-
     private func showError(_ error: Error) {
+        // 覆盖层在 screenSaver 层级，模态框会被压在下面、整个 App 看起来卡死。
+        if overlayWindow != nil {
+            dismissOverlay(hideApp: false)
+        }
         let alert = NSAlert()
         alert.alertStyle = .critical
         alert.messageText = L10n.t("截图失败", "Capture Failed")
         alert.informativeText = error.localizedDescription
         alert.addButton(withTitle: L10n.t("好", "OK"))
-        NSApp.activate(ignoringOtherApps: true)
-        alert.runModal()
+        _ = presentAlertOnActiveScreen(alert)
+    }
+
+    /// 多显示器时把模态框放到鼠标所在屏幕，避免弹到别的屏幕上。
+    private func presentAlertOnActiveScreen(_ alert: NSAlert) -> NSApplication.ModalResponse {
+        alert.layout()
+        let screen = NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) })
+            ?? NSScreen.main
+        if let screen {
+            let size = alert.window.frame.size
+            let target = CGPoint(
+                x: screen.frame.midX - size.width / 2,
+                y: screen.frame.midY - size.height / 2
+            )
+            alert.window.setFrameOrigin(target)
+            NSApp.activate(ignoringOtherApps: true)
+            // runModal 可能按当前活动屏幕重新居中；在模态循环里再拉回鼠标所在屏幕。
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                alert.window.setFrameOrigin(target)
+            }
+        } else {
+            NSApp.activate(ignoringOtherApps: true)
+        }
+        return alert.runModal()
     }
 }
 

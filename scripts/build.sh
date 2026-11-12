@@ -20,7 +20,8 @@ xcodebuild \
     exit 1
   }
 
-APP="$(xcodebuild -project Liteshot.xcodeproj -scheme Liteshot -showBuildSettings 2>/dev/null \
+APP="$(xcodebuild -project Liteshot.xcodeproj -scheme Liteshot \
+  -configuration "${CONFIG:-Debug}" -showBuildSettings 2>/dev/null \
   | awk '/ BUILT_PRODUCTS_DIR/ {dir=$3} / FULL_PRODUCT_NAME/ {name=$3} END {print dir "/" name}')"
 
 # Ad-hoc 签名：让 TCC 按 bundle id 记录权限，而不是 linker 生成的 "Liteshot" 标识。

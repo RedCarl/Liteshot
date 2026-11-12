@@ -18,6 +18,21 @@ final class EditorCanvasView: NSView {
     var selectedID: UUID?
     var onChange: (() -> Void)?
 
+    /// 截图覆盖层内联模式：画布精确贴合选区，不画背景/留白/阴影。
+    var inlineMode = false {
+        didSet {
+            guard inlineMode != oldValue else { return }
+            needsLayout = true
+            needsDisplay = true
+        }
+    }
+    /// 内联模式下按回车 / 双击：完成并复制。
+    var onFinishRequest: (() -> Void)?
+    /// 内联模式下按 Esc：退出截图。
+    var onCancelRequest: (() -> Void)?
+    /// 内联模式下按 ⌘S：保存并退出。
+    var onSaveRequest: (() -> Void)?
+
     private enum Interaction {
         case none
         case creating
@@ -46,6 +61,7 @@ final class EditorCanvasView: NSView {
 
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     override func layout() {
         super.layout()
@@ -60,10 +76,15 @@ final class EditorCanvasView: NSView {
     // MARK: - Drawing
 
     override func draw(_ dirtyRect: NSRect) {
+        guard imageRect.width > 0 else { return }
+
+        if inlineMode {
+            drawInline()
+            return
+        }
+
         NSColor(calibratedWhite: 0.12, alpha: 1).setFill()
         bounds.fill()
-
-        guard imageRect.width > 0 else { return }
 
         NSGraphicsContext.saveGraphicsState()
         let shadow = NSShadow()
@@ -87,6 +108,33 @@ final class EditorCanvasView: NSView {
         if let selected = selectedAnnotation {
             drawSelection(for: selected)
         }
+    }
+
+    private func drawInline() {
+        NSGraphicsContext.saveGraphicsState()
+        NSBezierPath(rect: bounds).addClip()
+
+        NSImage(cgImage: image, size: bounds.size).draw(in: bounds)
+
+        for annotation in document.annotations where annotation.id != transient?.id {
+            drawAnnotation(annotation)
+        }
+        if let transient {
+            drawAnnotation(transient)
+        }
+        if let draft {
+            drawAnnotation(draft)
+        }
+        if let selected = selectedAnnotation {
+            drawSelection(for: selected)
+        }
+
+        NSGraphicsContext.restoreGraphicsState()
+
+        NSColor.white.withAlphaComponent(0.9).setStroke()
+        let border = NSBezierPath(rect: bounds.insetBy(dx: 0.5, dy: 0.5))
+        border.lineWidth = 1
+        border.stroke()
     }
 
     private func drawAnnotation(_ annotation: Annotation) {
@@ -121,6 +169,10 @@ final class EditorCanvasView: NSView {
     override func mouseDown(with event: NSEvent) {
         if tool != .text, textField != nil {
             finishTextInput(commit: true)
+        }
+        if inlineMode, event.clickCount == 2, tool != .text {
+            onFinishRequest?()
+            return
         }
         window?.makeFirstResponder(self)
         updateImageRect()
@@ -304,6 +356,10 @@ final class EditorCanvasView: NSView {
     // MARK: - Keyboard
 
     override func keyDown(with event: NSEvent) {
+        if inlineMode {
+            if handleInlineShortcut(event) { return }
+        }
+
         switch event.keyCode {
         case 53: // Esc
             if draft != nil || transient != nil {
@@ -344,6 +400,47 @@ final class EditorCanvasView: NSView {
         }
     }
 
+    private func handleInlineShortcut(_ event: NSEvent) -> Bool {
+        switch event.keyCode {
+        case 53: // Esc：直接退出截图
+            onCancelRequest?()
+            return true
+
+        case 36, 76: // Return / Enter
+            onFinishRequest?()
+            return true
+
+        default:
+            break
+        }
+
+        let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        let isUndoModifier = mods.contains(.command) || mods.contains(.control)
+        if isUndoModifier, let key = event.charactersIgnoringModifiers?.lowercased() {
+            switch key {
+            case "z":
+                if mods.contains(.shift) {
+                    document.redo()
+                } else {
+                    document.undo()
+                }
+                selectedID = nil
+                needsDisplay = true
+                onChange?()
+                return true
+            case "c":
+                onFinishRequest?()
+                return true
+            case "s":
+                onSaveRequest?()
+                return true
+            default:
+                break
+            }
+        }
+        return false
+    }
+
     // MARK: - Public
 
     func select(id: UUID?) {
@@ -364,6 +461,13 @@ final class EditorCanvasView: NSView {
     // MARK: - Geometry
 
     private func updateImageRect() {
+        if inlineMode {
+            guard bounds.width > 1, bounds.height > 1, image.width > 0, image.height > 0 else { return }
+            displayScale = bounds.width / CGFloat(image.width)
+            imageRect = bounds
+            return
+        }
+
         let padding: CGFloat = 24
         let available = bounds.insetBy(dx: padding, dy: padding)
         guard available.width > 1, available.height > 1, image.width > 0, image.height > 0 else { return }
@@ -489,6 +593,13 @@ final class EditorCanvasView: NSView {
 }
 
 extension EditorCanvasView: NSTextFieldDelegate {
+    func controlTextDidEndEditing(_ obj: Notification) {
+        // 点工具条或点画布别处时，把正在输入的文字落成标注。
+        if textField != nil {
+            finishTextInput(commit: true)
+        }
+    }
+
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
         if commandSelector == #selector(NSResponder.insertNewline(_:)) {
             if let event = NSApp.currentEvent, event.modifierFlags.contains(.shift) {

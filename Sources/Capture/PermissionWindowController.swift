@@ -1,0 +1,211 @@
+import AppKit
+import SwiftUI
+
+@MainActor
+final class PermissionModel: ObservableObject {
+    @Published var granted: Bool = ScreenPermission.isGranted
+
+    var openSettings: () -> Void = {}
+    var close: () -> Void = {}
+    var startCapture: () -> Void = {}
+
+    func refresh() {
+        granted = ScreenPermission.isGranted
+    }
+}
+
+struct PermissionView: View {
+    @ObservedObject var model: PermissionModel
+    @State private var showHelp = false
+    @AppStorage("settings.permissionSuppressOnLaunch") private var suppressOnLaunch = false
+
+    private var title: String {
+        model.granted
+            ? L10n.t("屏幕录制权限已开启", "Screen Recording Enabled")
+            : L10n.t("需要屏幕录制权限", "Screen Recording Permission Required")
+    }
+
+    private var subtitle: String {
+        L10n.t(
+            "开始截图  OCR  滚动截图  贴图  标注...",
+            "Capture  OCR  Scrolling  Pin  Annotate..."
+        )
+    }
+
+    private var actionTitle: String {
+        model.granted
+            ? L10n.t("开始截图", "Start Capture")
+            : L10n.t("授权屏幕截图", "Authorize Screen Recording")
+    }
+
+    private var helpText: String {
+        L10n.t(
+            "Liteshot 需要屏幕录制权限才能截图。点击“授权屏幕截图”会弹出 macOS 权限对话框。\n\n可在“系统设置” -> “隐私与安全性” -> “屏幕录制与系统音频录制”中修改此设置。",
+            "Liteshot needs screen recording permission to capture the screen. Clicking “Authorize Screen Recording” shows the macOS permission dialog.\n\nYou can change this later in System Settings → Privacy & Security → Screen & System Audio Recording."
+        )
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Spacer(minLength: 0)
+
+            VStack(spacing: 12) {
+                Image(nsImage: NSApp.applicationIconImage)
+                    .resizable()
+                    .frame(width: 96, height: 96)
+
+                Text(title)
+                    .font(.system(size: 24, weight: .semibold))
+
+                Text(subtitle)
+                    .font(.system(size: 14))
+                    .foregroundStyle(.secondary)
+
+                HStack(spacing: 8) {
+                    Button(action: {
+                        if model.granted {
+                            model.startCapture()
+                        } else {
+                            model.openSettings()
+                        }
+                    }) {
+                        Text(actionTitle)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: 210)
+                            .padding(.vertical, 8)
+                            .background(model.granted ? Color.green : Color.red)
+                            .clipShape(RoundedRectangle(cornerRadius: 5))
+                    }
+                    .buttonStyle(.plain)
+                    .keyboardShortcut(.defaultAction)
+                    .help(helpText)
+
+                    Button(action: { showHelp.toggle() }) {
+                        Image(systemName: "questionmark")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(width: 24, height: 24)
+                            .background(Color.gray.opacity(0.55))
+                            .clipShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .popover(isPresented: $showHelp, arrowEdge: .bottom) {
+                        Text(helpText)
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(16)
+                            .frame(width: 380)
+                    }
+
+                    if model.granted {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 18))
+                            .foregroundStyle(.green)
+                    }
+                }
+                .padding(.top, 10)
+            }
+
+            Spacer(minLength: 0)
+
+            HStack {
+                Button(L10n.t("了解更多", "Learn More")) {
+                    if let url = URL(string: "https://github.com/RedCarl/Liteshot") {
+                        NSWorkspace.shared.open(url)
+                    }
+                }
+                .buttonStyle(.link)
+                .font(.system(size: 12))
+
+                Spacer()
+
+                Toggle(L10n.t("授权后下次启动不显示", "Don't show again after authorizing"), isOn: $suppressOnLaunch)
+                    .toggleStyle(.checkbox)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 16)
+        }
+        .frame(width: 620, height: 520)
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            model.refresh()
+        }
+        .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
+            model.refresh()
+        }
+    }
+}
+
+@MainActor
+final class PermissionWindowController: NSWindowController {
+    static let shared = PermissionWindowController()
+
+    private let model = PermissionModel()
+
+    private init() {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 620, height: 520),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = L10n.t("屏幕录制权限", "Screen Recording Permission")
+        window.isReleasedWhenClosed = false
+        window.level = .floating
+        window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        super.init(window: window)
+
+        let hosting = NSHostingController(rootView: PermissionView(model: model))
+        window.contentViewController = hosting
+        window.setContentSize(NSSize(width: 620, height: 520))
+
+        model.openSettings = { [weak self] in
+            self?.openSystemSettings()
+        }
+        model.close = { [weak self] in
+            self?.window?.close()
+        }
+        model.startCapture = { [weak self] in
+            self?.window?.close()
+            CaptureCoordinator.shared.begin(.adaptive)
+        }
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    func show() {
+        model.refresh()
+
+        if let window {
+            let screen = NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) })
+                ?? NSScreen.main
+            if let screen {
+                window.setFrameOrigin(CGPoint(
+                    x: screen.frame.midX - window.frame.width / 2,
+                    y: screen.frame.midY - window.frame.height / 2
+                ))
+            }
+        }
+
+        NSApp.unhide(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        showWindow(nil)
+        window?.makeKeyAndOrderFront(nil)
+    }
+
+    private func openSystemSettings() {
+        // 用户明确点击后才触发系统授权提示，App 启动/截图入口不主动弹系统窗口。
+        if !ScreenPermission.isGranted {
+            _ = ScreenPermission.request()
+        }
+        ScreenPermission.openSystemSettings()
+        model.refresh()
+    }
+}

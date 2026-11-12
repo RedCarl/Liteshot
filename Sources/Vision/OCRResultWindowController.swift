@@ -81,6 +81,8 @@ final class OCRResultWindowController: NSWindowController {
 
             nextButton.trailingAnchor.constraint(equalTo: copyButton.leadingAnchor, constant: -8),
             prevButton.trailingAnchor.constraint(equalTo: nextButton.leadingAnchor, constant: -8),
+            nextButton.bottomAnchor.constraint(equalTo: copyButton.bottomAnchor),
+            prevButton.bottomAnchor.constraint(equalTo: copyButton.bottomAnchor),
             copyButton.trailingAnchor.constraint(equalTo: closeButton.leadingAnchor, constant: -8),
             copyButton.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -12),
 

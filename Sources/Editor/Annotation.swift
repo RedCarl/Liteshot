@@ -47,7 +47,7 @@ enum AnnotationTool: String, CaseIterable, Identifiable {
         case .regionHighlight: return "rectangle.dashed"
         case .mosaic: return "checkerboard.rectangle"
         case .counter: return "number.circle"
-        case .text: return "textformat"
+        case .text: return "character.textbox"
         case .watermark: return "signature"
         case .image: return "photo"
         }
