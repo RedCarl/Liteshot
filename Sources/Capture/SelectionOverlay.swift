@@ -6,6 +6,7 @@ enum SelectionAction: Int {
     case pin
     case scroll
     case ocr
+    case qr
     case close
 }
 
@@ -136,7 +137,7 @@ final class SelectionOverlayView: NSView {
         }
         if allowsWindowPicking, !scrollMode {
             setupLockButton()
-            setupModeBar()
+            // 顶部未截图状态的功能条已移除；这些操作放到截图后的工具条里。
         }
     }
 
@@ -969,6 +970,7 @@ final class SelectionOverlayView: NSView {
             .action(.pin),
             .action(.scroll),
             .action(.ocr),
+            .action(.qr),
             .separator,
             .action(.save),
             .action(.close),
@@ -1188,6 +1190,12 @@ final class SelectionOverlayView: NSView {
             return (L10n.t("滚动截图", "Scroll"), "scroll", L10n.t("滚动截图", "Scrolling capture"))
         case .ocr:
             return ("OCR", "text.viewfinder", L10n.t("识别文字", "Recognize text"))
+        case .qr:
+            return (
+                L10n.t("二维码", "QR"),
+                "qrcode.viewfinder",
+                L10n.t("识别二维码 / 条形码", "Recognize QR / barcode")
+            )
         case .close:
             return (L10n.t("取消", "Cancel"), "xmark", L10n.t("取消截图 (Esc)", "Cancel capture (Esc)"))
         }
@@ -1304,7 +1312,8 @@ final class SelectionOverlayView: NSView {
 
         let width: CGFloat = 378
         let height: CGFloat = 34
-        var x = selection.midX - width / 2
+        // 顶部圆角/阴影样式条和底部工具条一样靠选区右侧对齐。
+        var x = selection.maxX - width
         x = min(max(x, 8), bounds.width - width - 8)
         var y = selection.maxY + 8
         if y + height > safeTopEdge - 4 {
@@ -1467,7 +1476,7 @@ final class SelectionOverlayView: NSView {
             onCancel?()
         case .copy, .save, .pin:
             onAction?(action, bakeImage() ?? image, pixelRect)
-        case .scroll, .ocr:
+        case .scroll, .ocr, .qr:
             onAction?(action, image, pixelRect)
         }
     }
@@ -2070,7 +2079,32 @@ final class ToolbarIconButton: NSButton {
 /// 非活动屏幕上的遮罩层：只负责变暗和吞掉鼠标事件，保证截图时所有屏幕都不能操作。
 @MainActor
 final class ShieldView: NSView {
+    var onSwitch: (() -> Void)?
+
     override var isOpaque: Bool { false }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(
+            NSTrackingArea(
+                rect: bounds,
+                options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect],
+                owner: self,
+                userInfo: nil
+            )
+        )
+    }
+
+    private func switchOnce() {
+        guard let onSwitch else { return }
+        self.onSwitch = nil
+        onSwitch()
+    }
+
+    override func mouseEntered(with event: NSEvent) { switchOnce() }
+    override func mouseMoved(with event: NSEvent) { switchOnce() }
+    override func mouseDown(with event: NSEvent) { switchOnce() }
 
     override func draw(_ dirtyRect: NSRect) {
         let configured = AppSettings.shared.maskOpacity
@@ -2082,7 +2116,6 @@ final class ShieldView: NSView {
     }
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-    override func mouseDown(with event: NSEvent) {}
     override func mouseUp(with event: NSEvent) {}
     override func rightMouseDown(with event: NSEvent) {}
     override func rightMouseUp(with event: NSEvent) {}

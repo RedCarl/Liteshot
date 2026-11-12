@@ -44,6 +44,11 @@ final class CaptureCoordinator {
     private var overlayWindow: NSWindow?
     private var countdownWindow: NSWindow?
     private var shieldWindows: [NSWindow] = []
+    private var screenSnapshots: [CGDirectDisplayID: CGImage] = [:]
+    private var overlaySwitchEnabled = false
+    private var isSwitchingOverlay = false
+    private var currentOverlayScreenID: CGDirectDisplayID?
+    private var screenSwitchTimer: Timer?
     private var scrollSession: ScrollCaptureSession?
     private var crossScreenController: CrossScreenCaptureController?
     private var pendingScrollStrategy: ScrollStrategy = .vertical
@@ -62,6 +67,7 @@ final class CaptureCoordinator {
     func begin(_ mode: CaptureMode, delayOverride: Int? = nil) {
         guard !isCapturing, overlayWindow == nil, countdownWindow == nil,
               scrollSession == nil, crossScreenController == nil else { return }
+        screenSnapshots.removeAll()
 
         // 先用非侵入式接口判断；没权限只弹应用自己的权限窗口，
         // 系统 TCC 弹窗留到用户点「打开设置」时再触发。
@@ -566,6 +572,9 @@ final class CaptureCoordinator {
         onScrollRegionSelected: ((CGRect) -> Void)? = nil,
         onSelected: ((CGImage, CGRect) -> Void)? = nil
     ) {
+        screenSnapshots[screen.displayID] = image
+        overlaySwitchEnabled = allowsWindowPicking && !scrollMode && !skipActionBar && onSelected == nil
+
         let window = makeOverlayWindow(on: screen)
         let view = SelectionOverlayView(
             frame: NSRect(origin: .zero, size: screen.frame.size),
@@ -624,6 +633,9 @@ final class CaptureCoordinator {
                 case .ocr:
                     self.dismissOverlay(hideApp: false)
                     self.runRecognition(on: image, mode: .ocr)
+                case .qr:
+                    self.dismissOverlay(hideApp: false)
+                    self.runRecognition(on: image, mode: .qr)
                 case .pin:
                     self.dismissOverlay(hideApp: true)
                     PinManager.shared.pin(image)
@@ -647,7 +659,28 @@ final class CaptureCoordinator {
 
         window.contentView = view
         showOverlay(window, firstResponder: view)
-        showShields(excluding: screen)
+        currentOverlayScreenID = screen.displayID
+        if overlaySwitchEnabled {
+            startScreenSwitchTimer()
+            // 先抓其他屏幕的冻结画面，再放遮罩；这样鼠标移到哪块屏幕，
+            // 就能用那块屏幕的冻结画面继续框选。
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                for other in NSScreen.screens where other.displayID != screen.displayID {
+                    if self.screenSnapshots[other.displayID] == nil,
+                       let snapshot = try? await ScreenCaptureService.capture(
+                           displayID: other.displayID,
+                           pixelWidth: Int(other.pixelSize.width),
+                           pixelHeight: Int(other.pixelSize.height)
+                       ) {
+                        self.screenSnapshots[other.displayID] = snapshot
+                    }
+                }
+                self.showShields(excluding: screen)
+            }
+        } else {
+            showShields(excluding: screen)
+        }
     }
 
     private func presentWindowPicker(on screen: NSScreen, image: CGImage, items: [WindowPickerView.Item]) {
@@ -666,7 +699,28 @@ final class CaptureCoordinator {
 
         window.contentView = view
         showOverlay(window, firstResponder: view)
-        showShields(excluding: screen)
+        currentOverlayScreenID = screen.displayID
+        if overlaySwitchEnabled {
+            startScreenSwitchTimer()
+            // 先抓其他屏幕的冻结画面，再放遮罩；这样鼠标移到哪块屏幕，
+            // 就能用那块屏幕的冻结画面继续框选。
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                for other in NSScreen.screens where other.displayID != screen.displayID {
+                    if self.screenSnapshots[other.displayID] == nil,
+                       let snapshot = try? await ScreenCaptureService.capture(
+                           displayID: other.displayID,
+                           pixelWidth: Int(other.pixelSize.width),
+                           pixelHeight: Int(other.pixelSize.height)
+                       ) {
+                        self.screenSnapshots[other.displayID] = snapshot
+                    }
+                }
+                self.showShields(excluding: screen)
+            }
+        } else {
+            showShields(excluding: screen)
+        }
     }
 
     private func handleWindowPick(_ windows: [CapturableWindow], on screen: NSScreen) {
@@ -761,6 +815,27 @@ final class CaptureCoordinator {
         return context.makeImage()
     }
 
+    private func startScreenSwitchTimer() {
+        screenSwitchTimer?.invalidate()
+        screenSwitchTimer = Timer.scheduledTimer(
+            timeInterval: 0.12,
+            target: self,
+            selector: #selector(checkScreenSwitch),
+            userInfo: nil,
+            repeats: true
+        )
+    }
+
+    @objc private func checkScreenSwitch() {
+        guard overlayWindow != nil,
+              overlaySwitchEnabled,
+              !isSwitchingOverlay,
+              let target = screenUnderMouse(),
+              target.displayID != currentOverlayScreenID,
+              let snapshot = screenSnapshots[target.displayID] else { return }
+        switchOverlay(to: target, image: snapshot)
+    }
+
     private func showShields(excluding active: NSScreen) {
         dismissShields()
         let activeID = active.displayID
@@ -780,7 +855,13 @@ final class CaptureCoordinator {
             window.ignoresMouseEvents = false
             window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
             window.setFrame(screen.frame, display: true)
-            window.contentView = ShieldView(frame: NSRect(origin: .zero, size: screen.frame.size))
+            let shield = ShieldView(frame: NSRect(origin: .zero, size: screen.frame.size))
+            if overlaySwitchEnabled, let snapshot = screenSnapshots[screen.displayID] {
+                shield.onSwitch = { [weak self] in
+                    self?.switchOverlay(to: screen, image: snapshot)
+                }
+            }
+            window.contentView = shield
             window.orderFrontRegardless()
             shieldWindows.append(window)
         }
@@ -792,6 +873,17 @@ final class CaptureCoordinator {
             window.contentView = nil
         }
         shieldWindows.removeAll()
+    }
+
+    private func switchOverlay(to screen: NSScreen, image: CGImage) {
+        guard overlayWindow != nil, !isSwitchingOverlay else { return }
+        isSwitchingOverlay = true
+        overlayWindow?.orderOut(nil)
+        overlayWindow?.contentView = nil
+        overlayWindow = nil
+        dismissShields()
+        presentRegionOverlay(on: screen, image: image, allowsWindowPicking: true)
+        isSwitchingOverlay = false
     }
 
     private func makeOverlayWindow(on screen: NSScreen) -> NSWindow {
@@ -911,7 +1003,12 @@ final class CaptureCoordinator {
     }
 
     private func dismissOverlay(hideApp: Bool = true) {
+        screenSwitchTimer?.invalidate()
+        screenSwitchTimer = nil
+        currentOverlayScreenID = nil
         dismissShields()
+        screenSnapshots.removeAll()
+        overlaySwitchEnabled = false
         overlayWindow?.orderOut(nil)
         overlayWindow?.contentView = nil
         overlayWindow = nil
