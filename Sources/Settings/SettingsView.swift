@@ -66,63 +66,16 @@ struct SettingsView: View {
 
                 Section(header: Text(tr("导出", "Export"))) {
                     Toggle(tr("Retina 缩小到 1x", "Downscale Retina to 1x"), isOn: $settings.exportScale1x)
-                    HStack(spacing: 10) {
-                        Text(tr("圆角", "Corner Radius"))
-                        Slider(
-                            value: Binding(
-                                get: { Double(settings.exportCornerRadius) },
-                                set: { settings.exportCornerRadius = Int($0) }
-                            ),
-                            in: 0...40,
-                            step: 2
-                        )
-                        Text("\(settings.exportCornerRadius) px")
-                            .monospacedDigit()
-                            .frame(width: 48, alignment: .trailing)
-                    }
-                    Toggle(tr("阴影", "Shadow"), isOn: $settings.exportShadow)
-                    if settings.exportShadow {
-                        HStack(spacing: 10) {
-                            Text(tr("阴影大小", "Shadow Blur"))
-                            Slider(value: $settings.exportShadowBlur, in: 0...40, step: 2)
-                            Text("\(Int(settings.exportShadowBlur)) px")
-                                .monospacedDigit()
-                                .frame(width: 48, alignment: .trailing)
-                        }
-                        HStack(spacing: 10) {
-                            Text(tr("阴影不透明度", "Shadow Opacity"))
-                            Slider(value: $settings.exportShadowOpacity, in: 0.1...0.8, step: 0.05)
-                            Text("\(Int(settings.exportShadowOpacity * 100))%")
-                                .monospacedDigit()
-                                .frame(width: 48, alignment: .trailing)
-                        }
-                        ColorPicker(tr("阴影颜色", "Shadow Color"), selection: Binding(
-                            get: { Color(nsColor: NSColor(hex: settings.exportShadowColorHex) ?? .black) },
-                            set: { settings.exportShadowColorHex = NSColor($0).hexString }
-                        ))
-                    }
                     Toggle(tr("透明背景", "Transparent Background"), isOn: $settings.exportTransparent)
                     Text(tr(
-                        "应用到编辑器和直接保存/复制的截图。",
-                        "Applied to editor exports and direct save/copy."
+                        "圆角、阴影不用在这里设置：每次截图时用选区上方的样式条单独调整。",
+                        "Corner radius and shadow are adjusted per capture with the style bar above the selection."
                     ))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 }
 
                 Section(header: Text(tr("选区外观", "Selection Appearance"))) {
-                    HStack(spacing: 10) {
-                        Text(tr("遮罩透明度", "Mask Opacity"))
-                        Slider(value: $settings.maskOpacity, in: 0.1...0.8)
-                        Text("\(Int(settings.maskOpacity * 100))%")
-                            .monospacedDigit()
-                            .frame(width: 42, alignment: .trailing)
-                    }
-                    Toggle(tr("尺寸标签显示在选区上方", "Show Size Label Above Selection"), isOn: $settings.sizeLabelAtTop)
-                    ColorPicker(tr("遮罩颜色", "Mask Color"), selection: Binding(
-                        get: { Color(nsColor: NSColor(hex: settings.maskColorHex) ?? .black) },
-                        set: { settings.maskColorHex = NSColor($0).hexString }
-                    ))
                     ColorPicker(tr("高亮颜色", "Highlight Color"), selection: Binding(
                         get: {
                             Color(nsColor: NSColor(hex: settings.highlightColorHex) ?? .controlAccentColor)

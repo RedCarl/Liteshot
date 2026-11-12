@@ -114,8 +114,7 @@ final class EditorCanvasView: NSView {
         NSGraphicsContext.saveGraphicsState()
         NSBezierPath(rect: bounds).addClip()
 
-        NSImage(cgImage: image, size: bounds.size).draw(in: bounds)
-
+        // inline 模式不画截图本身：覆盖层保持透明，让桌面原本的画面透出来。
         for annotation in document.annotations where annotation.id != transient?.id {
             drawAnnotation(annotation)
         }
@@ -131,9 +130,9 @@ final class EditorCanvasView: NSView {
 
         NSGraphicsContext.restoreGraphicsState()
 
-        NSColor.white.withAlphaComponent(0.9).setStroke()
+        (NSColor(hex: "#2F7CF6") ?? .controlAccentColor).setStroke()
         let border = NSBezierPath(rect: bounds.insetBy(dx: 0.5, dy: 0.5))
-        border.lineWidth = 1
+        border.lineWidth = 1.5
         border.stroke()
     }
 

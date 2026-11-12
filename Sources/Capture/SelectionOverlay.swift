@@ -88,7 +88,11 @@ final class SelectionOverlayView: NSView {
     private var redoButton: NSButton?
     private var moveButton: ToolbarIconButton?
     private var chrome: SelectionChromeView?
+    private var styleBar: CaptureStyleBarView?
     private var selectionMoveMode = false
+    private var captureCornerRadius: CGFloat = 0
+    private var captureShadow = false
+    private let selectionBorderColor = NSColor(hex: "#2F7CF6") ?? .controlAccentColor
     private var colorSwatches: [ColorSwatchButton] = []
     private var modeBar: NSView?
     private var escMonitor: Any?
@@ -111,6 +115,8 @@ final class SelectionOverlayView: NSView {
     ) {
         self.image = image
         self.displayImage = NSImage(cgImage: image, size: frame.size)
+        self.captureCornerRadius = CGFloat(AppSettings.shared.exportCornerRadius)
+        self.captureShadow = AppSettings.shared.exportShadow
         self.allowsWindowPicking = allowsWindowPicking
         self.scrollMode = scrollMode
         self.skipActionBar = skipActionBar
@@ -462,23 +468,14 @@ final class SelectionOverlayView: NSView {
     // MARK: - Drawing
 
     override func draw(_ dirtyRect: NSRect) {
-        displayImage.draw(in: bounds)
-
-        let maskColor = NSColor(hex: AppSettings.shared.maskColorHex) ?? .black
-        maskColor.withAlphaComponent(AppSettings.shared.maskOpacity).setFill()
-        bounds.fill()
-
+        // 覆盖层只画边框、手柄和工具条，背景保持透明，
+        // 让桌面/窗口以原本的样子透出来，不显示冻结截图。
         if selection.width == 0,
            !isEditing,
            allowsWindowPicking,
            let index = hoveredWindowIndex,
            windowHits.indices.contains(index) {
             let hit = windowHits[index]
-
-            NSGraphicsContext.saveGraphicsState()
-            NSBezierPath(rect: hit.rect).addClip()
-            displayImage.draw(in: bounds)
-            NSGraphicsContext.restoreGraphicsState()
 
             highlightColor.setStroke()
             let border = NSBezierPath(rect: hit.rect.insetBy(dx: 1, dy: 1))
@@ -500,14 +497,9 @@ final class SelectionOverlayView: NSView {
         }
 
         if selection.width > 0, selection.height > 0 {
-            NSGraphicsContext.saveGraphicsState()
-            NSBezierPath(rect: selection).addClip()
-            displayImage.draw(in: bounds)
-            NSGraphicsContext.restoreGraphicsState()
-
-            NSColor.white.withAlphaComponent(0.9).setStroke()
+            selectionBorderColor.setStroke()
             let border = NSBezierPath(rect: selection.insetBy(dx: 0.5, dy: 0.5))
-            border.lineWidth = 1
+            border.lineWidth = 1.5
             border.stroke()
 
             if !isEditing {
@@ -691,8 +683,8 @@ final class SelectionOverlayView: NSView {
         lockButton?.isHidden = true
         modeBar?.isHidden = true
 
+        buildStyleBar(for: viewRect)
         buildToolbar(for: viewRect)
-        updateSizeLabel(for: viewRect)
         updateUndoState()
 
         window?.invalidateCursorRects(for: self)
@@ -895,7 +887,8 @@ final class SelectionOverlayView: NSView {
             x += w + gap
         }
 
-        var originX = selection.midX - totalWidth / 2
+        // 工具条贴住选区右下角：右边缘和选区右边缘对齐，向左展开。
+        var originX = selection.maxX - totalWidth
         originX = min(max(originX, 8), bounds.width - totalWidth - 8)
 
         let barGap: CGFloat = 8
@@ -938,7 +931,7 @@ final class SelectionOverlayView: NSView {
         case .pin:
             return (L10n.t("钉图", "Pin"), "pin", L10n.t("钉在屏幕上", "Pin on screen"))
         case .scroll:
-            return (L10n.t("滚动截图", "Scroll"), "arrow.up.and.down", L10n.t("滚动截图", "Scrolling capture"))
+            return (L10n.t("滚动截图", "Scroll"), "scroll", L10n.t("滚动截图", "Scrolling capture"))
         case .ocr:
             return ("OCR", "text.viewfinder", L10n.t("识别文字", "Recognize text"))
         case .close:
@@ -973,6 +966,7 @@ final class SelectionOverlayView: NSView {
         chrome?.sizeText = "\\(Int(pixelRect(for: rect).width)) × \\(Int(pixelRect(for: rect).height))"
         canvas?.isHidden = true
         actionBar?.isHidden = true
+        styleBar?.isHidden = true
         sizeLabel?.isHidden = true
         needsDisplay = true
     }
@@ -988,6 +982,7 @@ final class SelectionOverlayView: NSView {
             chrome?.sizeText = ""
             canvas?.isHidden = false
             actionBar?.isHidden = false
+            styleBar?.isHidden = false
             sizeLabel?.isHidden = false
             needsDisplay = true
             return
@@ -999,6 +994,7 @@ final class SelectionOverlayView: NSView {
             chrome?.sizeText = ""
             canvas?.isHidden = false
             actionBar?.isHidden = false
+            styleBar?.isHidden = false
             sizeLabel?.isHidden = false
             needsDisplay = true
             return
@@ -1025,6 +1021,36 @@ final class SelectionOverlayView: NSView {
             moveMode: move
         )
         needsDisplay = true
+    }
+
+    private func buildStyleBar(for selection: CGRect) {
+        styleBar?.removeFromSuperview()
+        let bar = CaptureStyleBarView(frame: .zero)
+        let pixels = pixelRect(for: selection)
+        bar.update(
+            size: "\(Int(pixels.width)) × \(Int(pixels.height))",
+            radius: captureCornerRadius,
+            shadow: captureShadow
+        )
+        bar.onRadiusChanged = { [weak self] radius in
+            self?.captureCornerRadius = radius
+        }
+        bar.onShadowChanged = { [weak self] shadow in
+            self?.captureShadow = shadow
+        }
+
+        let width: CGFloat = 378
+        let height: CGFloat = 34
+        var x = selection.midX - width / 2
+        x = min(max(x, 8), bounds.width - width - 8)
+        var y = selection.maxY + 8
+        if y + height > safeTopEdge - 4 {
+            y = selection.minY - height - 8
+        }
+        y = min(max(y, safeBottomEdge + 4), safeTopEdge - height - 4)
+        bar.frame = CGRect(x: x, y: y, width: width, height: height)
+        addSubview(bar)
+        styleBar = bar
     }
 
     private func updateSizeLabel(for rect: CGRect) {
@@ -1076,6 +1102,8 @@ final class SelectionOverlayView: NSView {
         actionBar = nil
         sizeLabel?.removeFromSuperview()
         sizeLabel = nil
+        styleBar?.removeFromSuperview()
+        styleBar = nil
         toolButtons.removeAll()
         undoButton = nil
         redoButton = nil
@@ -1099,8 +1127,8 @@ final class SelectionOverlayView: NSView {
         let settings = AppSettings.shared
         let options = ExportOptions(
             scale: settings.exportScale1x ? 0.5 : 1,
-            cornerRadius: CGFloat(settings.exportCornerRadius),
-            shadow: settings.exportShadow,
+            cornerRadius: captureCornerRadius,
+            shadow: captureShadow,
             shadowBlur: CGFloat(settings.exportShadowBlur),
             shadowOpacity: settings.exportShadowOpacity,
             shadowColorHex: settings.exportShadowColorHex,

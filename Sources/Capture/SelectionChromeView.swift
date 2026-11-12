@@ -104,7 +104,7 @@ final class SelectionChromeView: NSView {
             moved.origin.x = min(max(moved.origin.x, 0), bounds.width - moved.width)
             moved.origin.y = min(max(moved.origin.y, 0), bounds.height - moved.height)
             rect = moved
-        case .resize(let index, let start):
+        case .resize(let index, _):
             rect = resized(startRect, handle: index, to: point)
         }
         onPreview?(rect)
@@ -166,9 +166,10 @@ final class SelectionChromeView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         guard rect.width > 1, rect.height > 1 else { return }
 
-        NSColor.white.withAlphaComponent(0.9).setStroke()
+        let accent = NSColor(hex: "#2F7CF6") ?? .controlAccentColor
+        accent.setStroke()
         let border = NSBezierPath(rect: rect.insetBy(dx: 0.5, dy: 0.5))
-        border.lineWidth = 1
+        border.lineWidth = 1.5
         border.stroke()
 
         for point in handlePoints {
@@ -180,7 +181,7 @@ final class SelectionChromeView: NSView {
             )
             NSColor.white.setFill()
             handle.fill()
-            NSColor.controlAccentColor.setStroke()
+            accent.setStroke()
             let outline = NSBezierPath(rect: handle)
             outline.lineWidth = 1
             outline.stroke()
