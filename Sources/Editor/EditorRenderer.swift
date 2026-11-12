@@ -72,7 +72,9 @@ enum EditorRenderer {
             NSGraphicsContext.restoreGraphicsState()
         }
 
-        if !options.transparent {
+        // 圆角/阴影本身就是透明卡片效果：不要先铺白底，
+        // 否则圆角外侧会变成白色。只有无圆角、无阴影时才按设置铺白底。
+        if !options.transparent && options.cornerRadius <= 0 && !options.shadow {
             NSColor.white.setFill()
             imageRect.fill()
         }

@@ -1398,7 +1398,7 @@ final class SelectionOverlayView: NSView {
             shadowBlur: CGFloat(settings.exportShadowBlur),
             shadowOpacity: settings.exportShadowOpacity,
             shadowColorHex: settings.exportShadowColorHex,
-            transparent: settings.exportTransparent
+            transparent: settings.exportTransparent || captureCornerRadius > 0 || captureShadow
         )
         return EditorRenderer.render(image: image, annotations: annotations, options: options) ?? image
     }
