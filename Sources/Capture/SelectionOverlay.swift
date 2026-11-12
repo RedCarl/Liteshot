@@ -1,4 +1,5 @@
 import AppKit
+import QuartzCore
 
 enum SelectionAction: Int {
     case copy
@@ -99,6 +100,14 @@ final class SelectionOverlayView: NSView {
     private var captureShadow = false
     private let selectionBorderColor = NSColor(hex: "#2F7CF6") ?? .controlAccentColor
     private var colorSwatches: [ColorSwatchButton] = []
+    private var magnifierAlpha: CGFloat = 0
+    private var magnifierScale: CGFloat = 0.88
+    private var magnifierTimer: Timer?
+    private var magnifierTarget: CGFloat = 0
+    private var magnifierStartAlpha: CGFloat = 0
+    private var magnifierStartScale: CGFloat = 0.88
+    private var magnifierTargetScale: CGFloat = 1
+    private var magnifierStartTime = Date()
     private var modeBar: NSView?
     private var escMonitor: Any?
 
@@ -226,6 +235,7 @@ final class SelectionOverlayView: NSView {
 
     private func selectFullScreen() {
         modeBar?.isHidden = true
+        selection = bounds
         let full = CGRect(x: 0, y: 0, width: image.width, height: image.height)
         showEditingToolbar(image: image, pixelRect: full, viewRect: bounds)
     }
@@ -521,11 +531,19 @@ final class SelectionOverlayView: NSView {
                 drawSizeLabel()
             }
         } else if !isEditing {
+            if allowsWindowPicking, hoveredWindowIndex == nil {
+                selectionBorderColor.withAlphaComponent(0.42).setStroke()
+                let full = NSBezierPath(rect: bounds.insetBy(dx: 1, dy: 1))
+                full.lineWidth = 1.5
+                full.setLineDash([6, 4], count: 2, phase: 0)
+                full.stroke()
+            }
             drawHint()
         }
 
         drawSnapGuides()
-        if !isEditing, dragStart != nil || selection.width == 0 {
+        updateMagnifierAnimation()
+        if !isEditing, dragStart != nil || selection.width == 0, magnifierAlpha > 0.01 {
             drawMagnifier()
         }
         drawStatus()
@@ -700,6 +718,7 @@ final class SelectionOverlayView: NSView {
         pendingImage = image
         pendingPixelRect = pixelRect
         editingViewRect = viewRect
+        selection = viewRect.intersection(bounds)
 
         let document = EditorDocument()
         for annotation in annotations {
@@ -749,6 +768,10 @@ final class SelectionOverlayView: NSView {
         updateToolStyleBar()
         updateUndoState()
 
+        animateIn(chrome)
+        animateIn(styleBar, offsetY: -5)
+        animateIn(actionBar, offsetY: 5)
+
         window?.invalidateCursorRects(for: self)
         window?.invalidateCursorRects(for: canvas)
         NSCursor.arrow.set()
@@ -786,9 +809,31 @@ final class SelectionOverlayView: NSView {
             bar.isHidden = true
             return
         }
+        let wasHidden = bar.isHidden
         bar.update(tool: tool, style: ToolStyleStore.style(for: tool))
         bar.isHidden = false
         positionToolStyleBar()
+        if wasHidden {
+            animateIn(bar, offsetY: 5)
+        }
+    }
+
+    private func animateIn(_ view: NSView?, offsetY: CGFloat = 0) {
+        guard let view, !view.isHidden else { return }
+        view.wantsLayer = true
+        view.alphaValue = 0
+        let finalFrame = view.frame
+        if offsetY != 0 {
+            view.frame = finalFrame.offsetBy(dx: 0, dy: offsetY)
+        }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.16
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            view.animator().alphaValue = 1
+            if offsetY != 0 {
+                view.animator().frame = finalFrame
+            }
+        }
     }
 
     private func positionToolStyleBar() {
@@ -1317,7 +1362,9 @@ final class SelectionOverlayView: NSView {
         x = min(max(x, 8), bounds.width - width - 8)
         var y = selection.maxY + 8
         if y + height > safeTopEdge - 4 {
-            y = selection.minY - height - 8
+            // 上方放不下（例如全屏选区）时，把样式条放到选区顶部内侧，
+            // 而不是塞到屏幕底部/Dock 后面。
+            y = selection.maxY - height - 8
         }
         y = min(max(y, safeBottomEdge + 4), safeTopEdge - height - 4)
         bar.frame = CGRect(x: x, y: y, width: width, height: height)
@@ -1512,8 +1559,8 @@ final class SelectionOverlayView: NSView {
         } else if allowsWindowPicking {
             if selectedWindows.isEmpty {
                 text = L10n.t(
-                    "拖拽选择区域 · 点击窗口直接截取 · Esc 取消",
-                    "Drag to select · Click a window to capture it · Esc cancels"
+                    "拖拽选择区域 · 点击窗口直接截取 · 点击空白截全屏 · Esc 取消",
+                    "Drag to select · Click a window to capture it · Click empty space for full screen · Esc cancels"
                 )
             } else {
                 text = L10n.t("已选 ", "Selected ") + "\(selectedWindows.count) " + L10n.t(
@@ -1717,8 +1764,7 @@ final class SelectionOverlayView: NSView {
                         showEditingToolbar(image: cropped, pixelRect: rect, viewRect: viewRect)
                     }
                 } else {
-                    let full = CGRect(x: 0, y: 0, width: image.width, height: image.height)
-                    showEditingToolbar(image: image, pixelRect: full, viewRect: bounds)
+                    selectFullScreen()
                 }
                 return
             }
@@ -1851,6 +1897,49 @@ final class SelectionOverlayView: NSView {
 
     // MARK: - Magnifier
 
+    private var magnifierShouldShow: Bool {
+        !isEditing && (dragStart != nil || selection.width == 0)
+    }
+
+    private func updateMagnifierAnimation() {
+        if magnifierShouldShow {
+            if magnifierAlpha < 0.99, magnifierTimer == nil {
+                startMagnifierAnimation(to: 1)
+            }
+        } else if magnifierAlpha > 0.01, magnifierTimer == nil {
+            startMagnifierAnimation(to: 0)
+        }
+    }
+
+    private func startMagnifierAnimation(to target: CGFloat) {
+        magnifierStartAlpha = magnifierAlpha
+        magnifierStartScale = magnifierScale
+        magnifierTarget = target
+        magnifierTargetScale = target > 0.5 ? 1 : 0.9
+        magnifierStartTime = Date()
+        magnifierTimer?.invalidate()
+        magnifierTimer = Timer.scheduledTimer(
+            timeInterval: 1.0 / 60.0,
+            target: self,
+            selector: #selector(stepMagnifierAnimation),
+            userInfo: nil,
+            repeats: true
+        )
+    }
+
+    @objc private func stepMagnifierAnimation() {
+        let t = min(1, Date().timeIntervalSince(magnifierStartTime) / 0.16)
+        let eased = 1 - pow(1 - t, 3)
+        magnifierAlpha = magnifierStartAlpha + (magnifierTarget - magnifierStartAlpha) * CGFloat(eased)
+        magnifierScale = magnifierStartScale + (magnifierTargetScale - magnifierStartScale) * CGFloat(eased)
+        needsDisplay = true
+        if t >= 1 {
+            magnifierTimer?.invalidate()
+            magnifierTimer = nil
+            updateMagnifierAnimation()
+        }
+    }
+
     private func drawMagnifier() {
         guard AppSettings.shared.showMagnifier,
               let cursor = cursorPoint,
@@ -1869,6 +1958,13 @@ final class SelectionOverlayView: NSView {
         let baseScale = bounds.width / CGFloat(image.width)
         let zoomScale = baseScale * 5
         let pixel = imagePoint(cursor)
+
+        let context = NSGraphicsContext.current?.cgContext
+        context?.saveGState()
+        context?.setAlpha(magnifierAlpha)
+        context?.translateBy(x: center.x, y: center.y)
+        context?.scaleBy(x: magnifierScale, y: magnifierScale)
+        context?.translateBy(x: -center.x, y: -center.y)
 
         NSGraphicsContext.saveGraphicsState()
         NSBezierPath(ovalIn: lens).addClip()
@@ -1943,6 +2039,7 @@ final class SelectionOverlayView: NSView {
             at: CGPoint(x: labelRect.minX + 30, y: labelRect.midY - textSize.height / 2),
             withAttributes: attributes
         )
+        context?.restoreGState()
     }
 
     private func drawStatus() {
