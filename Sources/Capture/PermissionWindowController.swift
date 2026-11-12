@@ -151,6 +151,7 @@ final class PermissionWindowController: NSWindowController {
     static let shared = PermissionWindowController()
 
     private let model = PermissionModel()
+    private var revealTask: Task<Void, Never>?
 
     private init() {
         let window = NSWindow(
@@ -171,14 +172,17 @@ final class PermissionWindowController: NSWindowController {
         window.setContentSize(NSSize(width: 620, height: 520))
 
         model.requestPermission = { [weak self] in
-            // 只弹系统授权框；不再同时打开系统设置，避免三个窗口叠在一起。
+            // 先把自定义引导窗口收起来，让系统授权框到最前面；
+            // 之前引导窗口是 floating，会把系统弹窗挡在后面。
+            self?.window?.orderOut(nil)
             _ = ScreenPermission.request()
-            self?.model.refresh()
+            self?.revealGuideWhenGranted()
         }
         model.openSettings = { [weak self] in
-            // 用户明确点“打开系统设置”时才打开设置。
+            // 打开系统设置时也先收起引导窗口，避免挡住设置页。
+            self?.window?.orderOut(nil)
             ScreenPermission.openSystemSettings()
-            self?.model.refresh()
+            self?.revealGuideWhenGranted()
         }
         model.close = { [weak self] in
             self?.window?.close()
@@ -192,6 +196,23 @@ final class PermissionWindowController: NSWindowController {
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    private func revealGuideWhenGranted() {
+        revealTask?.cancel()
+        revealTask = Task { @MainActor [weak self] in
+            for _ in 0..<60 {
+                try? await Task.sleep(for: .seconds(1))
+                guard !Task.isCancelled else { return }
+                if ScreenPermission.isGranted {
+                    guard let self else { return }
+                    self.model.refresh()
+                    NSApp.activate(ignoringOtherApps: true)
+                    self.window?.makeKeyAndOrderFront(nil)
+                    return
+                }
+            }
+        }
     }
 
     func show() {
