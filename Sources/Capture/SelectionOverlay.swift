@@ -108,6 +108,15 @@ final class SelectionOverlayView: NSView {
     private var magnifierStartScale: CGFloat = 0.88
     private var magnifierTargetScale: CGFloat = 1
     private var magnifierStartTime = Date()
+    private var hoverAnimRect: CGRect?
+    private var hoverAnimTarget: CGRect?
+    private var hoverAnimStartRect: CGRect?
+    private var hoverAnimStartTime = Date()
+    private var magnifierCenter: CGPoint?
+    private var magnifierCenterTarget: CGPoint?
+    private var magnifierCenterStart: CGPoint?
+    private var magnifierCenterStartTime = Date()
+    private var motionTimer: Timer?
     private var modeBar: NSView?
     private var escMonitor: Any?
 
@@ -492,13 +501,14 @@ final class SelectionOverlayView: NSView {
            let index = hoveredWindowIndex,
            windowHits.indices.contains(index) {
             let hit = windowHits[index]
+            let hoverRect = hoverAnimRect ?? hit.rect
 
             highlightColor.setStroke()
-            let border = NSBezierPath(rect: hit.rect.insetBy(dx: 1, dy: 1))
+            let border = NSBezierPath(rect: hoverRect.insetBy(dx: 1, dy: 1))
             border.lineWidth = 2
             border.stroke()
 
-            drawWindowTitle(for: hit)
+            drawWindowTitle(for: hit, in: hoverRect)
         }
 
         for (order, hit) in selectedWindows.enumerated() {
@@ -532,11 +542,14 @@ final class SelectionOverlayView: NSView {
             }
         } else if !isEditing {
             if allowsWindowPicking, hoveredWindowIndex == nil {
-                selectionBorderColor.withAlphaComponent(0.42).setStroke()
-                let full = NSBezierPath(rect: bounds.insetBy(dx: 1, dy: 1))
-                full.lineWidth = 1.5
-                full.setLineDash([6, 4], count: 2, phase: 0)
-                full.stroke()
+                let fullRect = (hoverAnimRect ?? bounds).intersection(bounds)
+                if fullRect.width > 1, fullRect.height > 1 {
+                    selectionBorderColor.withAlphaComponent(0.42).setStroke()
+                    let full = NSBezierPath(rect: fullRect.insetBy(dx: 1, dy: 1))
+                    full.lineWidth = 1.5
+                    full.setLineDash([6, 4], count: 2, phase: 0)
+                    full.stroke()
+                }
             }
             drawHint()
         }
@@ -547,6 +560,101 @@ final class SelectionOverlayView: NSView {
             drawMagnifier()
         }
         drawStatus()
+    }
+
+    private func animateHoverFrame(to target: CGRect) {
+        if hoverAnimRect == nil {
+            hoverAnimRect = target
+            return
+        }
+        guard hoverAnimRect != target else { return }
+        hoverAnimStartRect = hoverAnimRect
+        hoverAnimTarget = target
+        hoverAnimStartTime = Date()
+        startMotionTimer()
+    }
+
+    private func magnifierCenter(for cursor: CGPoint) -> CGPoint {
+        let radius: CGFloat = 62
+        let margin: CGFloat = 14
+        var center = CGPoint(x: cursor.x + 120, y: cursor.y + 120)
+        if center.x + radius > bounds.width - margin { center.x = cursor.x - 120 }
+        if center.y + radius > bounds.height - margin { center.y = cursor.y - 120 }
+        center.x = min(max(center.x, radius + margin), bounds.width - radius - margin)
+        center.y = min(max(center.y, radius + margin), bounds.height - radius - margin)
+        return center
+    }
+
+    private func animateMagnifierCenter(to cursor: CGPoint) {
+        let target = magnifierCenter(for: cursor)
+        if magnifierCenter == nil {
+            magnifierCenter = target
+            return
+        }
+        guard magnifierCenter != target else { return }
+        magnifierCenterStart = magnifierCenter
+        magnifierCenterTarget = target
+        magnifierCenterStartTime = Date()
+        startMotionTimer()
+    }
+
+    private func startMotionTimer() {
+        guard motionTimer == nil else { return }
+        motionTimer = Timer.scheduledTimer(
+            timeInterval: 1.0 / 60.0,
+            target: self,
+            selector: #selector(stepMotion),
+            userInfo: nil,
+            repeats: true
+        )
+    }
+
+    @objc private func stepMotion() {
+        var running = false
+
+        if let start = hoverAnimStartRect, let target = hoverAnimTarget {
+            let t = min(1, Date().timeIntervalSince(hoverAnimStartTime) / 0.14)
+            let eased = CGFloat(1 - pow(1 - t, 3))
+            hoverAnimRect = interpolate(start, target, eased)
+            if t >= 1 {
+                hoverAnimRect = target
+                hoverAnimStartRect = nil
+                hoverAnimTarget = nil
+            } else {
+                running = true
+            }
+        }
+
+        if let start = magnifierCenterStart, let target = magnifierCenterTarget {
+            let t = min(1, Date().timeIntervalSince(magnifierCenterStartTime) / 0.10)
+            let eased = CGFloat(1 - pow(1 - t, 3))
+            magnifierCenter = CGPoint(
+                x: start.x + (target.x - start.x) * eased,
+                y: start.y + (target.y - start.y) * eased
+            )
+            if t >= 1 {
+                magnifierCenter = target
+                magnifierCenterStart = nil
+                magnifierCenterTarget = nil
+            } else {
+                running = true
+            }
+        }
+
+        needsDisplay = true
+        if !running {
+            motionTimer?.invalidate()
+            motionTimer = nil
+        }
+    }
+
+    private func interpolate(_ a: CGRect, _ b: CGRect, _ t: CGFloat) -> CGRect {
+        CGRect(
+            x: a.minX + (b.minX - a.minX) * t,
+            y: a.minY + (b.minY - a.minY) * t,
+            width: a.width + (b.width - a.width) * t,
+            height: a.height + (b.height - a.height) * t
+        )
     }
 
     private func drawSelectionMask() {
@@ -614,16 +722,16 @@ final class SelectionOverlayView: NSView {
         )
     }
 
-    private func drawWindowTitle(for hit: WindowHit) {
+    private func drawWindowTitle(for hit: WindowHit, in rect: CGRect) {
         let text = hit.window.displayTitle
         let attributes: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 12, weight: .medium),
             .foregroundColor: NSColor.white,
         ]
         let size = (text as NSString).size(withAttributes: attributes)
-        var origin = CGPoint(x: hit.rect.minX, y: hit.rect.maxY + 8)
+        var origin = CGPoint(x: rect.minX, y: rect.maxY + 8)
         if origin.y + size.height + 10 > bounds.height - 4 {
-            origin.y = hit.rect.minY - size.height - 14
+            origin.y = rect.minY - size.height - 14
         }
         origin.x = min(max(origin.x, 4), bounds.width - size.width - 20)
 
@@ -1413,6 +1521,8 @@ final class SelectionOverlayView: NSView {
     }
 
     private func dismissEditing() {
+        motionTimer?.invalidate()
+        motionTimer = nil
         canvas?.commitPendingText()
         canvas?.removeFromSuperview()
         canvas = nil
@@ -1622,8 +1732,16 @@ final class SelectionOverlayView: NSView {
         currentColor = sampler?.color(atX: Int(pixel.x), y: Int(pixel.y))
 
         if allowsWindowPicking, dragStart == nil, selection.width == 0, !isEditing {
-            hoveredWindowIndex = topmostWindowIndex(at: point)
+            let newIndex = topmostWindowIndex(at: point)
+            if newIndex != hoveredWindowIndex {
+                hoveredWindowIndex = newIndex
+                let target = newIndex.flatMap { index in
+                    windowHits.indices.contains(index) ? windowHits[index].rect : nil
+                } ?? bounds
+                animateHoverFrame(to: target)
+            }
         }
+        animateMagnifierCenter(to: point)
         updateHoverTip(at: point)
         // 编辑状态下的遮罩/边框是静态的，不要每个 mouseMoved 都整屏重绘；
         // 只更新 hover 提示这个小视图，避免掉帧。
@@ -1691,6 +1809,7 @@ final class SelectionOverlayView: NSView {
     override func mouseDragged(with event: NSEvent) {
         guard let start = dragStart else { return }
         let raw = convert(event.locationInWindow, from: nil)
+        animateMagnifierCenter(to: raw)
         let snappedX = snapped(raw.x, guides: snapGuidesX)
         let snappedY = snapped(raw.y, guides: snapGuidesY)
         activeSnapX = snappedX.guide
@@ -1948,11 +2067,7 @@ final class SelectionOverlayView: NSView {
 
         let radius: CGFloat = 62
         let margin: CGFloat = 14
-        var center = CGPoint(x: cursor.x + 120, y: cursor.y + 120)
-        if center.x + radius > bounds.width - margin { center.x = cursor.x - 120 }
-        if center.y + radius > bounds.height - margin { center.y = cursor.y - 120 }
-        center.x = min(max(center.x, radius + margin), bounds.width - radius - margin)
-        center.y = min(max(center.y, radius + margin), bounds.height - radius - margin)
+        let center = magnifierCenter ?? magnifierCenter(for: cursor)
 
         let lens = CGRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2)
         let baseScale = bounds.width / CGFloat(image.width)
