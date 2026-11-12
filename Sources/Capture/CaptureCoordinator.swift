@@ -766,6 +766,7 @@ final class CaptureCoordinator {
             defer: false
         )
         window.becomesKeyOnlyIfNeeded = false
+        window.animationBehavior = .none
         window.level = .screenSaver
         window.backgroundColor = .clear
         window.isOpaque = false
@@ -778,12 +779,12 @@ final class CaptureCoordinator {
     }
 
     private func showOverlay(_ window: NSWindow, firstResponder: NSView) {
-        NSApp.unhide(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        // 覆盖层是非激活 panel，不需要激活 App；不激活就不会触发
+        // 空间切换 / 窗口缩放的系统动画。
+        window.animationBehavior = .none
         window.makeKeyAndOrderFront(nil)
         window.makeKey()
         window.makeFirstResponder(firstResponder)
-        NSRunningApplication.current.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
         overlayWindow = window
     }
 
@@ -800,6 +801,7 @@ final class CaptureCoordinator {
             defer: false
         )
         window.becomesKeyOnlyIfNeeded = false
+        window.animationBehavior = .none
         window.level = .screenSaver
         window.backgroundColor = .clear
         window.isOpaque = false
@@ -880,7 +882,7 @@ final class CaptureCoordinator {
         countdownWindow = nil
 
         NSCursor.arrow.set()
-        if hideApp {
+        if hideApp, NSApp.isActive {
             // 把焦点还给用户原来的 App；用 deactivate 而不是 hide，
             // 否则已有的钉图窗口会跟着整个 App 一起被隐藏。
             NSApp.deactivate()

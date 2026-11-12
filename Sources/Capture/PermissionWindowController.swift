@@ -155,6 +155,7 @@ final class PermissionWindowController: NSWindowController {
         )
         window.title = L10n.t("屏幕录制权限", "Screen Recording Permission")
         window.isReleasedWhenClosed = false
+        window.animationBehavior = .none
         window.level = .floating
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         super.init(window: window)

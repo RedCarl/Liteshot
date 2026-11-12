@@ -15,6 +15,17 @@ enum SelectionAction: Int {
 final class OverlayWindow: NSPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
+
+    override init(
+        contentRect: NSRect,
+        styleMask style: NSWindow.StyleMask,
+        backing backingStoreType: NSWindow.BackingStoreType,
+        defer flag: Bool
+    ) {
+        super.init(contentRect: contentRect, styleMask: style, backing: backingStoreType, defer: flag)
+        // 截图覆盖层要瞬间出现/消失，不要系统窗口的缩放/淡入动画。
+        animationBehavior = .none
+    }
 }
 
 @MainActor

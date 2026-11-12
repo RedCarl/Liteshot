@@ -173,6 +173,7 @@ final class ScrollCaptureSession: NSObject {
             backing: .buffered,
             defer: false
         )
+        panel.animationBehavior = .none
         panel.level = .floating
         panel.sharingType = .none
         panel.isOpaque = false
@@ -278,6 +279,7 @@ final class ScrollCaptureSession: NSObject {
             backing: .buffered,
             defer: false
         )
+        window.animationBehavior = .none
         window.level = .floating
         window.backgroundColor = .clear
         window.isOpaque = false

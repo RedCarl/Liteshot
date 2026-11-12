@@ -192,6 +192,7 @@ final class UpdateWindowController: NSWindowController, NSWindowDelegate {
         )
         window.title = L10n.t("软件更新", "Software Update")
         window.isReleasedWhenClosed = false
+        window.animationBehavior = .none
         super.init(window: window)
         window.delegate = self
 
