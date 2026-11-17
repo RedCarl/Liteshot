@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>隐私政策 · Liteshot</title>
+<link rel="canonical" href="https://redcarl.github.io/Liteshot/privacy.html" />
+<style>
+  :root {
+    --bg: #0e0f10; --fg: #f3f4f5; --muted: #a4a6ab; --faint: #7b7e84;
+    --line: rgba(255,255,255,.11); --panel: rgba(255,255,255,.04);
+    --brand: #79a9ff; --radius: 16px;
+    --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  }
+  @media (prefers-color-scheme: light) {
+    :root { --bg:#f6f6f7; --fg:#16171a; --muted:#5b5d63; --faint:#86888e;
+            --line: rgba(0,0,0,.12); --panel: rgba(255,255,255,.7); --brand:#1f6feb; }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg); font-family: var(--font);
+    line-height: 1.75; -webkit-font-smoothing: antialiased;
+  }
+  main { max-width: 720px; margin: 0 auto; padding: 72px 24px 96px; }
+  a { color: var(--brand); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .back { font-size: 14px; color: var(--muted); }
+  h1 { font-size: 32px; letter-spacing: -.02em; margin: 24px 0 8px; }
+  .updated { color: var(--faint); font-size: 14px; margin-bottom: 40px; }
+  h2 { font-size: 18px; margin: 40px 0 12px; }
+  p, li { color: var(--muted); font-size: 16px; }
+  strong { color: var(--fg); font-weight: 600; }
+  ul { padding-left: 22px; }
+  .card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 20px 24px; margin: 24px 0;
+  }
+  footer { margin-top: 56px; padding-top: 24px; border-top: 1px solid var(--line);
+           color: var(--faint); font-size: 14px; }
+</style>
+</head>
+<body>
+<main>
+  <a class="back" href="index.html">← 返回 Liteshot</a>
+  <h1>隐私政策</h1>
+  <p class="updated">最后更新：2026-11-16</p>
+
+  <div class="card">
+    <p><strong>一句话：Liteshot 不联网，不收集任何数据。</strong>截图与文字识别全部在你的 Mac 上完成，没有任何内容会离开这台电脑。</p>
+  </div>
+
+  <h2>我们不收集什么</h2>
+  <ul>
+    <li>不收集任何个人信息、账号信息或设备标识</li>
+    <li>不包含统计、分析、崩溃上报或广告 SDK</li>
+    <li>不发起任何网络请求（应用内没有联网代码）</li>
+    <li>不读取、上传或分析你的截图内容</li>
+  </ul>
+
+  <h2>数据如何被处理</h2>
+  <p>截图、标注、滚动拼接、二维码识别都在本机内存中完成。文字识别（OCR）调用 macOS 内置的 Vision 框架，同样在本机运行。生成的图片只会写入你在「设置」里指定的本地文件夹。</p>
+  <p>截图历史保存在本机的应用数据目录内，最多保留 50 张，可在应用内清空。</p>
+
+  <h2>系统权限</h2>
+  <p><strong>屏幕录制：</strong>仅用于截图功能。首次使用时应用会先显示自己的说明页，再由你决定是否在「系统设置 → 隐私与安全性 → 屏幕与系统音频录制」中授权。你可以随时在那里撤销。</p>
+  <p><strong>文件夹访问：</strong>仅用于把图片写入你选择的保存目录（默认是「图片」或「下载」下的 Liteshot 文件夹）。</p>
+
+  <h2>第三方服务</h2>
+  <p>没有。应用不集成任何第三方 SDK，也不与任何服务器通信。</p>
+
+  <h2>儿童隐私</h2>
+  <p>应用不收集任何人的数据，自然也不收集儿童的数据。</p>
+
+  <h2>政策变更</h2>
+  <p>如果将来隐私实践有变化，本页会更新并修改上方日期；重大变化会在应用更新说明中提示。</p>
+
+  <h2>联系我们</h2>
+  <p>任何隐私相关问题，发邮件到 <a href="mailto:carl030101@icloud.com">carl030101@icloud.com</a>。</p>
+
+  <footer>© 2026 孙磊 · Liteshot　|　<a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener">鄂ICP备2024059854号-3A</a></footer>
+</main>
+</body>
+</html>

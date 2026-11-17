@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>支持 · Liteshot</title>
+<link rel="canonical" href="https://redcarl.github.io/Liteshot/support.html" />
+<style>
+  :root {
+    --bg: #0e0f10; --fg: #f3f4f5; --muted: #a4a6ab; --faint: #7b7e84;
+    --line: rgba(255,255,255,.11); --panel: rgba(255,255,255,.04);
+    --brand: #79a9ff; --radius: 16px;
+    --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: light) {
+    :root { --bg:#f6f6f7; --fg:#16171a; --muted:#5b5d63; --faint:#86888e;
+            --line: rgba(0,0,0,.12); --panel: rgba(255,255,255,.7); --brand:#1f6feb; }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg); font-family: var(--font);
+    line-height: 1.75; -webkit-font-smoothing: antialiased;
+  }
+  main { max-width: 720px; margin: 0 auto; padding: 72px 24px 96px; }
+  a { color: var(--brand); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .back { font-size: 14px; color: var(--muted); }
+  h1 { font-size: 32px; letter-spacing: -.02em; margin: 24px 0 8px; }
+  .lead { color: var(--faint); font-size: 14px; margin-bottom: 40px; }
+  h2 { font-size: 18px; margin: 40px 0 10px; }
+  p, li { color: var(--muted); font-size: 16px; }
+  strong { color: var(--fg); font-weight: 600; }
+  code { font-family: var(--mono); font-size: 14px; background: var(--panel);
+         border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px; color: var(--fg); }
+  .card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 20px 24px; margin: 24px 0;
+  }
+  footer { margin-top: 56px; padding-top: 24px; border-top: 1px solid var(--line);
+           color: var(--faint); font-size: 14px; }
+</style>
+</head>
+<body>
+<main>
+  <a class="back" href="index.html">← 返回 Liteshot</a>
+  <h1>支持</h1>
+  <p class="lead">遇到问题先看下面几条，没解决就写信给我。</p>
+
+  <div class="card">
+    <p><strong>联系邮箱：</strong><a href="mailto:carl030101@icloud.com">carl030101@icloud.com</a><br>
+    <strong>问题反馈：</strong><a href="https://github.com/RedCarl/Liteshot/issues">GitHub Issues</a></p>
+    <p style="margin-bottom:0">写信时附上 macOS 版本、Liteshot 版本（菜单「关于」里能看到）和复现步骤，会快很多。</p>
+  </div>
+
+  <h2>第一次截图没有反应？</h2>
+  <p>Liteshot 需要「屏幕录制」权限。首次启动时应用会先弹出自己的说明页，点「打开设置」后，在
+  <strong>系统设置 → 隐私与安全性 → 屏幕与系统音频录制</strong> 里勾选 Liteshot。授权后需要退出并重新打开应用一次。</p>
+
+  <h2>截图保存到哪里了？</h2>
+  <p>默认保存到 <code>~/Downloads/Liteshot</code>（或 <code>~/Pictures/Liteshot</code>，取决于系统是否放行）。可以在
+  <strong>设置 → 保存</strong> 里点「选择…」改成任意文件夹，重启后依然有效。</p>
+
+  <h2>快捷键是什么？</h2>
+  <ul>
+    <li>开始截图：<code>⌃⌘A</code></li>
+    <li>复制并退出：<code>Enter</code> / 双击 / <code>⌘C</code></li>
+    <li>保存并退出：<code>⌘S</code></li>
+    <li>取消：<code>Esc</code></li>
+    <li>撤销 / 重做：<code>⌘Z</code> / <code>⇧⌘Z</code></li>
+  </ul>
+  <p>全部快捷键都能在「设置 → 快捷键」里改。</p>
+
+  <h2>为什么菜单栏没有图标？</h2>
+  <p>Liteshot 是菜单栏应用（不占 Dock）。启动后请查看屏幕右上角菜单栏，图标是一把剪刀。如果菜单栏图标太多被折叠了，先隐藏一些其他图标。</p>
+
+  <h2>滚动截图拼接有错位？</h2>
+  <p>滚动速度过快时拼接会失准，HUD 会给出提示。建议每次滚动幅度小一些、稍作停顿再继续。</p>
+
+  <h2>怎么切换语言？</h2>
+  <p>设置 → 语言 / Language → 界面语言，可选「跟随系统」「简体中文」「English」。</p>
+
+  <h2>数据会被上传吗？</h2>
+  <p>不会。Liteshot 不联网，OCR 使用本机 Vision 框架。详见 <a href="privacy.html">隐私政策</a>。</p>
+
+  <footer>© 2026 孙磊 · Liteshot　|　<a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener">鄂ICP备2024059854号-3A</a></footer>
+</main>
+</body>
+</html>
