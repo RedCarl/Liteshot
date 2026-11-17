@@ -1,9 +1,16 @@
+#if DEBUG
 import AppKit
 import Carbon.HIToolbox
 import CoreGraphics
 import CoreImage
 
 enum SelfTest {
+    /// 沙盒下禁止写硬编码的 /tmp，统一走 App 容器内的临时目录。
+    static func tempFile(_ name: String, isDirectory: Bool = false) -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent(name, isDirectory: isDirectory)
+    }
+
     static func run() async -> Int32 {
         guard ScreenPermission.isGranted else {
             print("SELFTEST: 未授权屏幕录制（已触发系统请求，授权后重跑）")
@@ -33,7 +40,7 @@ enum SelfTest {
                 return 4
             }
 
-            let url = URL(fileURLWithPath: "/tmp/liteshot-selftest.png")
+            let url = SelfTest.tempFile("liteshot-selftest.png")
             try png.write(to: url)
 
             let pasteboard = NSPasteboard.general
@@ -66,7 +73,7 @@ enum SelfTest {
                 pixelWidth: Int(screen.pixelSize.width),
                 pixelHeight: Int(screen.pixelSize.height)
             )
-            let directory = URL(fileURLWithPath: "/tmp/liteshot-save-test", isDirectory: true)
+            let directory = SelfTest.tempFile("liteshot-save-test", isDirectory: true)
             let url = try SaveService.save(
                 image: image,
                 to: directory,
@@ -195,7 +202,7 @@ enum SelfTest {
             return 1
         }
 
-        let url = URL(fileURLWithPath: "/tmp/liteshot-scrollh-test.png")
+        let url = SelfTest.tempFile("liteshot-scrollh-test.png")
         try? png.write(to: url)
 
         let ok = abs(output.width - pageWidth) <= 10 && output.height == frameHeight
@@ -237,7 +244,7 @@ enum SelfTest {
             print("SELFTEST-PANORAMA: 拼接失败")
             return 1
         }
-        try? png.write(to: URL(fileURLWithPath: "/tmp/liteshot-panorama-test.png"))
+        try? png.write(to: SelfTest.tempFile("liteshot-panorama-test.png"))
 
         let ok = abs(output.width - 800) <= 10 && abs(output.height - 400) <= 10
         print("SELFTEST-PANORAMA: \(ok ? "PASS" : "FAIL") 输出 \(output.width)x\(output.height)（期望 ~800x400）")
@@ -313,7 +320,7 @@ enum SelfTest {
         }
 
         if let png = ImageEncoding.pngData(from: cgImage) {
-            try? png.write(to: URL(fileURLWithPath: "/tmp/liteshot-ocr-test.png"))
+            try? png.write(to: SelfTest.tempFile("liteshot-ocr-test.png"))
         }
 
         do {
@@ -373,7 +380,7 @@ enum SelfTest {
             return 1
         }
 
-        let url = URL(fileURLWithPath: "/tmp/liteshot-scroll-test.png")
+        let url = SelfTest.tempFile("liteshot-scroll-test.png")
         try? png.write(to: url)
 
         let expected = pageHeight
@@ -598,7 +605,7 @@ enum SelfTest {
                 return 4
             }
 
-            let url = URL(fileURLWithPath: "/tmp/liteshot-editor-render.png")
+            let url = SelfTest.tempFile("liteshot-editor-render.png")
             try png.write(to: url)
             print("SELFTEST-EDITOR: 渲染成功 \(rendered.width)x\(rendered.height)，\(annotations.count) 个元素，\(png.count) bytes")
             print("SELFTEST-EDITOR: \(url.path)")
@@ -606,7 +613,7 @@ enum SelfTest {
             let exportOptions = ExportOptions(scale: 0.5, cornerRadius: 32, shadow: true, transparent: true)
             if let exported = EditorRenderer.render(image: image, annotations: annotations, options: exportOptions),
                let exportPNG = ImageEncoding.pngData(from: exported) {
-                let exportURL = URL(fileURLWithPath: "/tmp/liteshot-export-test.png")
+                let exportURL = SelfTest.tempFile("liteshot-export-test.png")
                 try exportPNG.write(to: exportURL)
                 print("SELFTEST-EDITOR: 导出效果 \(exported.width)x\(exported.height)（0.5x + 圆角 + 阴影 + 透明）")
                 print("SELFTEST-EDITOR: \(exportURL.path)")
@@ -627,3 +634,4 @@ enum SelfTest {
             ?? NSScreen.screens.first
     }
 }
+#endif

@@ -37,6 +37,11 @@ final class AppSettings: ObservableObject {
         didSet { store.set(saveDirectoryPath, forKey: Keys.saveDirectory) }
     }
 
+    /// 沙盒下用户自选目录只在当次运行有效，必须存安全作用域书签才能在重启后继续写入。
+    @Published var saveDirectoryBookmark: Data? {
+        didSet { store.set(saveDirectoryBookmark, forKey: Keys.saveDirectoryBookmark) }
+    }
+
     @Published var format: ImageFormat {
         didSet { store.set(format.rawValue, forKey: Keys.format) }
     }
@@ -149,6 +154,7 @@ final class AppSettings: ObservableObject {
 
     private enum Keys {
         static let saveDirectory = "settings.saveDirectory"
+        static let saveDirectoryBookmark = "settings.saveDirectoryBookmark"
         static let format = "settings.format"
         static let jpegQuality = "settings.jpegQuality"
         static let autoSave = "settings.autoSave"
@@ -180,7 +186,17 @@ final class AppSettings: ObservableObject {
 
     private init() {
         let defaults = UserDefaults.standard
-        saveDirectoryPath = defaults.string(forKey: Keys.saveDirectory) ?? Self.defaultSaveDirectory.path
+        let storedBookmark = defaults.data(forKey: Keys.saveDirectoryBookmark)
+        let storedPath = defaults.string(forKey: Keys.saveDirectory)
+        // 沙盒下以前记下的路径可能已经写不进去（换签名、换机器、权限收紧），启动时自愈一次；
+        // 有书签时以书签为准，不去碰用户自己选的目录。
+        if let storedPath,
+           storedBookmark != nil || Self.canWrite(into: URL(fileURLWithPath: storedPath, isDirectory: true)) {
+            saveDirectoryPath = storedPath
+        } else {
+            saveDirectoryPath = Self.defaultSaveDirectory.path
+        }
+        saveDirectoryBookmark = storedBookmark
         format = ImageFormat(rawValue: defaults.string(forKey: Keys.format) ?? "") ?? .png
         jpegQuality = defaults.object(forKey: Keys.jpegQuality) as? Double ?? 0.9
         autoSave = defaults.bool(forKey: Keys.autoSave)
@@ -242,13 +258,45 @@ final class AppSettings: ObservableObject {
     }
 
     var saveDirectory: URL {
-        URL(fileURLWithPath: saveDirectoryPath, isDirectory: true)
+        if let bookmark = saveDirectoryBookmark {
+            var stale = false
+            if let url = try? URL(
+                resolvingBookmarkData: bookmark,
+                options: [.withSecurityScope],
+                relativeTo: nil,
+                bookmarkDataIsStale: &stale
+            ) {
+                return url
+            }
+        }
+        return URL(fileURLWithPath: saveDirectoryPath, isDirectory: true)
     }
 
+    /// 沙盒里并非所有标准目录都放行（实测图片文件夹不可写、下载文件夹可写），
+    /// 所以按「真能写进去」挑默认目录，挑不到再退回下载文件夹，避免首屏截图保存失败。
     static var defaultSaveDirectory: URL {
-        let pictures = FileManager.default.urls(for: .picturesDirectory, in: .userDomainMask).first
+        let candidates: [FileManager.SearchPathDirectory] = [.picturesDirectory, .downloadsDirectory]
+        for directory in candidates {
+            guard let base = FileManager.default.urls(for: directory, in: .userDomainMask).first else { continue }
+            let target = base.appendingPathComponent("Liteshot", isDirectory: true)
+            if canWrite(into: target) { return target }
+        }
+        let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
             ?? FileManager.default.homeDirectoryForCurrentUser
-        return pictures.appendingPathComponent("Liteshot", isDirectory: true)
+        return downloads.appendingPathComponent("Liteshot", isDirectory: true)
+    }
+
+    private static func canWrite(into directory: URL) -> Bool {
+        let manager = FileManager.default
+        do {
+            try manager.createDirectory(at: directory, withIntermediateDirectories: true)
+            let probe = directory.appendingPathComponent(".liteshot-write-check")
+            try Data().write(to: probe)
+            try? manager.removeItem(at: probe)
+            return true
+        } catch {
+            return false
+        }
     }
 
     func chooseSaveDirectory() {
@@ -260,6 +308,11 @@ final class AppSettings: ObservableObject {
         panel.directoryURL = saveDirectory
         if panel.runModal() == .OK, let url = panel.url {
             saveDirectoryPath = url.path
+            saveDirectoryBookmark = try? url.bookmarkData(
+                options: .withSecurityScope,
+                includingResourceValuesForKeys: nil,
+                relativeTo: nil
+            )
         }
     }
 }

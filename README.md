@@ -56,13 +56,13 @@ Liteshot 是一个 macOS 上的截图工具。它把「框选 → 标注 → 复
 
 macOS 14 及以上，Apple 芯片与 Intel 都支持。
 
-**下载：<https://redcarl.github.io/Liteshot/>**（页面会直接下载最新版）
+**App Store：<https://apps.apple.com/cn/app/id6835743767>**
 
-- 下载的是 zip，解压后把 `Liteshot.app` 拖进「应用程序」
-- 首次打开若提示「已损坏」或「无法验证开发者」：在 Finder 里右键 → 打开，或执行
-  `xattr -dr com.apple.quarantine /Applications/Liteshot.app`
+- 唯一分发渠道是 App Store，更新由 App Store 推送
 - 首次截图需要在 系统设置 → 隐私与安全性 → 屏幕与系统音频录制 中授权；应用会先显示自己的权限引导页
-- 更新：菜单「检查更新…」，也可以在应用内提示时直接下载新版
+
+源码在 <https://github.com/RedCarl/Liteshot>，仓库只托管源代码，不提供编译好的安装包。
+需要自己构建的话：`xcodegen generate` 后打开 `Liteshot.xcodeproj` 运行，或 `xcodebuild` 自行构建。
 
 ---
 
@@ -113,18 +113,18 @@ macOS 要求「屏幕录制」权限。应用会先显示自己的权限引导�
 
 **怎么更新？**
 
-菜单「检查更新…」，或按应用内提示下载最新版；下载后解压替换 `Liteshot.app`，不会自动安装。
+由 App Store 推送更新，不用手动处理；应用内不联网检查版本。
 
-**为什么没有上架 / 没有 Apple 公证？**
+**源码可以自己编译吗？**
 
-MIT 开源，用 ad-hoc 签名发布，未做 Apple 公证；首次打开需要右键打开。
+可以。`xcodegen generate` 后打开 `Liteshot.xcodeproj`，用你自己的开发者证书签名运行。仓库不发布编译好的安装包。
 
 ---
 
 ## 免责声明
 
 - 本项目是独立开源工具，与 QQ、微信、Longshot 等产品没有隶属关系。
-- 截图内容只在本机处理；OCR 使用本地 Vision；只有「检查更新」会访问 GitHub API。
+- 截图内容只在本机处理；OCR 使用本地 Vision；应用不联网、不内嵌任何统计或广告 SDK，不上传任何数据。
 - 请勿用本工具截取、传播他人隐私或受版权保护的内容；使用产生的后果由使用者自行承担。
 - 软件按 MIT 协议「按原样」提供，不附带任何担保。
 

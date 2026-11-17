@@ -1,5 +1,6 @@
 import AppKit
 
+#if DEBUG
 // 自检模式：直接采集一帧、写剪贴板并退出，用于验证 TCC 权限与采集链路。
 if CommandLine.arguments.contains("--selftest") {
     Task {
@@ -82,7 +83,11 @@ if CommandLine.arguments.contains("--permission") || CommandLine.arguments.conta
     """
     print(text)
     if CommandLine.arguments.contains("--permission-file") {
-        try? text.write(toFile: "/tmp/liteshot-permission.txt", atomically: true, encoding: .utf8)
+        try? text.write(
+            toFile: FileManager.default.temporaryDirectory.appendingPathComponent("liteshot-permission.txt").path,
+            atomically: true,
+            encoding: .utf8
+        )
     }
     exit(ScreenPermission.isGranted ? 0 : 2)
 }
@@ -93,6 +98,25 @@ if CommandLine.arguments.contains("--print-lang") {
     print("english:", L10n.isEnglish)
     exit(0)
 }
+
+// 诊断：打印保存目录与可写性（沙盒签名前后对比时用）。
+if CommandLine.arguments.contains("--where") {
+    MainActor.assumeIsolated {
+        let settings = AppSettings.shared
+        let dir = settings.saveDirectory
+        let probe = dir.appendingPathComponent(".write-check")
+        let writable = (try? Data().write(to: probe)) != nil
+        try? FileManager.default.removeItem(at: probe)
+        print("bundle: \(Bundle.main.bundleIdentifier ?? "nil")")
+        print("默认目录: \(AppSettings.defaultSaveDirectory.path)")
+        print("当前保存目录: \(dir.path)")
+        print("安全作用域书签: \(settings.saveDirectoryBookmark == nil ? "无" : "有")")
+        print("可写: \(writable)")
+    }
+    exit(0)
+}
+
+#endif
 
 let application = NSApplication.shared
 let delegate = AppDelegate()

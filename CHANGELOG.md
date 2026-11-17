@@ -1,5 +1,16 @@
 # 更新记录
 
+## 1.0.0（App Store 首发）
+
+- 适配 Mac App Store：开启 App Sandbox；保存目录改用安全作用域书签，重启后仍能写入用户自选文件夹
+- 移除应用内更新检查（App Store 不允许 app 自行下载、安装可执行代码），更新改由 App Store 推送
+- 应用不再发起任何网络请求，离线可用；新增 `PrivacyInfo.xcprivacy`，声明 UserDefaults 与文件时间戳用途
+- Info.plist 补充 `LSApplicationCategoryType`，以及「下载 / 桌面 / 文稿」文件夹的使用说明
+- Bundle ID 改为 `cn.carljoy.liteshot`
+- 图标改为不透明满幅（App Store 不接受 alpha，macOS 26 也只认满幅图标）
+- 自检与诊断命令（`--selftest*`、`--where`）收进 Debug 构建，发布包不再包含隐藏命令
+
+
 ## 0.3.52
 
 - 修复拖动/调整选区时左上角显示 Swift 插值代码的问题，现在显示实际的宽 × 高

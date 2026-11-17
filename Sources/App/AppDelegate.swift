@@ -18,11 +18,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
            !UserDefaults.standard.bool(forKey: "settings.permissionSuppressOnLaunch") {
             PermissionWindowController.shared.show()
         }
-
-        // 启动后静默检查一次更新；没有新版本不打扰用户。
-        DispatchQueue.main.asyncAfter(deadline: .now() + 8) {
-            UpdateChecker.shared.check(manual: false)
-        }
     }
 
     private func setupMainMenu() {
@@ -47,7 +42,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func setupStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = item.button {
-            button.image = NSImage(systemSymbolName: "camera.viewfinder", accessibilityDescription: "Liteshot")
+            // 和应用图标同一只剪刀：直接用 Logo 的图形做 template image，
+            // 系统会按菜单栏明暗自动反色
+            let configuration = NSImage.SymbolConfiguration(pointSize: 15.5, weight: .semibold)
+            let fallback = NSImage(systemSymbolName: "scissors", accessibilityDescription: "Liteshot")?
+                .withSymbolConfiguration(configuration)
+            button.image = NSImage(named: "MenuBarIcon") ?? fallback
             button.image?.isTemplate = true
             let shortcut = AppSettings.shared.regionShortcut.displayString
             button.toolTip = L10n.t("Liteshot · 开始截图 ", "Liteshot · Start Capture ") + shortcut
@@ -90,11 +90,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ))
 
         menu.addItem(.separator())
-        menu.addItem(menuItem(
-            title: L10n.t("检查更新…", "Check for Updates…"),
-            action: #selector(checkForUpdates),
-            symbol: "arrow.triangle.2.circlepath"
-        ))
         menu.addItem(menuItem(
             title: L10n.t("关于 Liteshot", "About Liteshot"),
             action: #selector(openAbout),
@@ -309,10 +304,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    @objc private func checkForUpdates() {
-        UpdateChecker.shared.check()
-    }
-
     @objc private func openAbout() {
         AboutWindowController.shared.show()
     }
@@ -358,23 +349,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func handleDebugArguments() {
         #if DEBUG
-        if CommandLine.arguments.contains("--update-demo") {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-                let release = GitHubRelease(
-                    tagName: "v0.3.99",
-                    htmlURL: URL(string: "https://github.com/RedCarl/Liteshot/releases")!,
-                    body: "## 更新内容\n- 内联工具条与悬浮模式条\n- 权限引导页\n- 更新下载走 gh-proxy 加速",
-                    assets: [
-                        GitHubRelease.Asset(
-                            name: "Liteshot-0.3.28.zip",
-                            downloadURL: URL(string: "https://github.com/RedCarl/Liteshot/releases/download/v0.3.28/Liteshot-0.3.28.zip")!
-                        )
-                    ]
-                )
-                UpdateWindowController.show(release: release, currentVersion: "0.3.37")
-            }
-        }
-
         if CommandLine.arguments.contains("--open-menu") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
                 self?.statusItem?.button?.performClick(nil)
@@ -384,12 +358,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if CommandLine.arguments.contains("--open-settings") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 SettingsWindowController.shared.show()
-            }
-        }
-
-        if CommandLine.arguments.contains("--check-updates") {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                UpdateChecker.shared.check()
             }
         }
 

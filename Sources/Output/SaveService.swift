@@ -25,6 +25,10 @@ enum SaveService {
         template: String,
         date: Date = Date()
     ) throws -> URL {
+        // 沙盒下自选目录需要显式开启安全作用域；系统图片目录由 entitlement 直接允许。
+        let scoped = directory.startAccessingSecurityScopedResource()
+        defer { if scoped { directory.stopAccessingSecurityScopedResource() } }
+
         do {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         } catch {
