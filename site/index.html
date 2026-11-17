@@ -214,12 +214,6 @@ h1 em {
 }
 .btn-ghost:hover { background: var(--panel-hi); transform: translateY(-1px); }
 
-.meta {
-  margin: 16px 0 0;
-  font-size: 12.5px;
-  color: var(--faint);
-}
-
 /* 预览图 */
 .shot {
   position: relative;
@@ -247,97 +241,7 @@ h1 em {
     inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
-/* ---------- 下载 ---------- */
 
-.download {
-  padding: 56px 0 40px;
-  border-top: 1px solid var(--line-soft);
-}
-
-.download h2 {
-  margin: 0;
-  font-size: 22px;
-  letter-spacing: -0.02em;
-  font-weight: 650;
-}
-
-.sub {
-  margin: 8px 0 24px;
-  font-size: 13.5px;
-  color: var(--faint);
-}
-
-.platforms {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 12px;
-}
-
-.plat {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 20px 22px;
-  border: 1px solid var(--line-soft);
-  border-radius: var(--radius);
-  background: var(--panel);
-  transition: border-color 0.2s ease, background 0.2s ease, transform 0.2s ease;
-}
-
-.plat:hover {
-  border-color: var(--line);
-  background: var(--panel-hi);
-  transform: translateY(-2px);
-}
-
-.plat.rec {
-  border-color: var(--brand-line);
-  background: linear-gradient(180deg, var(--brand-soft), transparent 70%), var(--panel);
-}
-
-.plat .os {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 15px;
-  font-weight: 600;
-}
-
-.plat .os svg { width: 17px; height: 17px; color: var(--muted); }
-.plat.rec .os svg { color: var(--brand); }
-
-.plat .file {
-  font-family: var(--mono);
-  font-size: 11.5px;
-  color: var(--faint);
-  word-break: break-all;
-}
-
-.plat .size {
-  font-family: var(--mono);
-  font-size: 11.5px;
-  color: var(--faint);
-}
-
-.plat .tag {
-  position: absolute;
-  top: 16px;
-  right: 16px;
-  padding: 2px 7px;
-  border-radius: 6px;
-  background: var(--brand);
-  color: var(--brand-ink);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-}
-
-.hint {
-  margin: 18px 0 0;
-  font-size: 12.5px;
-  color: var(--faint);
-}
 
 .hint a {
   color: var(--muted);
@@ -386,7 +290,6 @@ footer a:hover { color: var(--fg); }
     padding: 32px 0 56px;
   }
   .shot { order: 2; }
-  .platforms { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 520px) {
@@ -411,19 +314,18 @@ footer a:hover { color: var(--fg); }
   <main id="top">
     <section class="hero">
       <div class="copy">
-        <p class="eyebrow">Swift · AppKit · MIT</p>
+        <p class="eyebrow">macOS 14+ · Apple 芯片与 Intel</p>
 
         <h1>截图，<br />也可以<em>很轻</em>。</h1>
 
         <p class="lede">
-          一个菜单栏常驻的 macOS 截图工具。区域、窗口、滚动截图，框选后直接标注、复制、保存，
-          没有第二个编辑器窗口，也没有多余弹窗。
+          菜单栏常驻，框选、标注、复制一步到位。
         </p>
 
         <div class="actions">
           <a class="btn btn-primary" id="hero-dl" href="https://apps.apple.com/cn/app/id6835743767" rel="noopener">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><path d="m7.5 10.5 4.5 4.5 4.5-4.5"/><path d="M4 20h16"/></svg>
-            <span id="hero-dl-label">在 App Store 下载</span>
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"/></svg>
+            <span id="hero-dl-label">App Store</span>
           </a>
           <a class="btn btn-ghost" href="https://github.com/RedCarl/Liteshot" target="_blank" rel="noopener">
             <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
@@ -431,7 +333,6 @@ footer a:hover { color: var(--fg); }
           </a>
         </div>
 
-        <p class="meta" id="meta">macOS 14+ · Apple 芯片与 Intel · App Store 下载</p>
       </div>
 
       <figure class="shot">
@@ -440,28 +341,6 @@ footer a:hover { color: var(--fg); }
       </figure>
     </section>
 
-    <section class="download" id="download">
-      <h2>下载</h2>
-      <p class="sub">macOS 14+，Apple 芯片与 Intel 通用。通过 App Store 安装，更新由 App Store 推送。</p>
-
-      <div class="platforms">
-        <a class="plat rec" data-os="mac" href="https://apps.apple.com/cn/app/id6835743767" rel="noopener">
-          <span class="tag" data-rec>App Store</span>
-          <span class="os">
-            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16.4 12.7c0-2.3 1.9-3.4 2-3.5-1.1-1.6-2.8-1.8-3.4-1.8-1.4-.1-2.7.8-3.4.8-.7 0-1.8-.8-3-.8-1.5 0-3 .9-3.8 2.3-1.6 2.8-.4 7 1.2 9.3.8 1.1 1.7 2.4 2.9 2.3 1.2 0 1.6-.7 3-.7s1.8.7 3 .7c1.2 0 2-1.1 2.8-2.2.9-1.3 1.3-2.5 1.3-2.6-.1 0-2.6-1-2.6-3.8ZM14.2 5.7c.6-.8 1.1-1.9 1-3-.9 0-2 .6-2.7 1.4-.6.7-1.1 1.8-1 2.9 1 .1 2-.5 2.7-1.3Z"/></svg>
-            macOS · 通用
-          </span>
-          <span class="file" data-file="mac">Liteshot 1.0</span>
-          <span class="size" data-size="mac">App Store</span>
-        </a>
-      </div>
-
-      <p class="hint">
-        唯一分发渠道是 App Store。源码在
-        <a href="https://github.com/RedCarl/Liteshot" target="_blank" rel="noopener">GitHub</a>，
-        仓库只托管源码，不提供编译好的安装包。
-      </p>
-    </section>
   </main>
 
   <footer>
