@@ -3,8 +3,9 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>支持 · Liteshot</title>
+<title>支持 · Support · Liteshot</title>
 <link rel="canonical" href="https://redcarl.github.io/Liteshot/support.html" />
+<meta name="description" content="Liteshot 使用支持与常见问题。Support and FAQ for Liteshot." />
 <style>
   :root {
     --bg: #0e0f10; --fg: #f3f4f5; --muted: #a4a6ab; --faint: #7b7e84;
@@ -22,68 +23,160 @@
     margin: 0; background: var(--bg); color: var(--fg); font-family: var(--font);
     line-height: 1.75; -webkit-font-smoothing: antialiased;
   }
-  main { max-width: 720px; margin: 0 auto; padding: 72px 24px 96px; }
+  main { max-width: 720px; margin: 0 auto; padding: 56px 24px 96px; }
   a { color: var(--brand); text-decoration: none; }
   a:hover { text-decoration: underline; }
+  .topbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
   .back { font-size: 14px; color: var(--muted); }
-  h1 { font-size: 32px; letter-spacing: -.02em; margin: 24px 0 8px; }
+  .lang { display: flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }
+  .lang button {
+    appearance: none; border: 0; background: transparent; color: var(--muted);
+    font: inherit; font-size: 13px; padding: 5px 14px; cursor: pointer;
+  }
+  .lang button[aria-pressed="true"] { background: var(--panel); color: var(--fg); }
+  h1 { font-size: 32px; letter-spacing: -.02em; margin: 8px 0 8px; }
   .lead { color: var(--faint); font-size: 14px; margin-bottom: 40px; }
   h2 { font-size: 18px; margin: 40px 0 10px; }
   p, li { color: var(--muted); font-size: 16px; }
   strong { color: var(--fg); font-weight: 600; }
   code { font-family: var(--mono); font-size: 14px; background: var(--panel);
          border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px; color: var(--fg); }
-  .card {
-    background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
-    padding: 20px 24px; margin: 24px 0;
-  }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+          padding: 20px 24px; margin: 24px 0; }
   footer { margin-top: 56px; padding-top: 24px; border-top: 1px solid var(--line);
            color: var(--faint); font-size: 14px; }
+  [hidden] { display: none !important; }
 </style>
 </head>
 <body>
 <main>
-  <a class="back" href="index.html">← 返回 Liteshot</a>
-  <h1>支持</h1>
-  <p class="lead">遇到问题先看下面几条，没解决就写信给我。</p>
-
-  <div class="card">
-    <p><strong>联系邮箱：</strong><a href="mailto:carl030101@icloud.com">carl030101@icloud.com</a><br>
-    <strong>问题反馈：</strong><a href="https://github.com/RedCarl/Liteshot/issues">GitHub Issues</a></p>
-    <p style="margin-bottom:0">写信时附上 macOS 版本、Liteshot 版本（菜单「关于」里能看到）和复现步骤，会快很多。</p>
+  <div class="topbar">
+    <a class="back" href="index.html"><span data-zh>← 返回 Liteshot</span><span data-en hidden>← Back to Liteshot</span></a>
+    <div class="lang" role="group" aria-label="Language / 语言">
+      <button type="button" data-set-lang="zh" aria-pressed="true">中文</button>
+      <button type="button" data-set-lang="en" aria-pressed="false">EN</button>
+    </div>
   </div>
 
-  <h2>第一次截图没有反应？</h2>
-  <p>Liteshot 需要「屏幕录制」权限。首次启动时应用会先弹出自己的说明页，点「打开设置」后，在
-  <strong>系统设置 → 隐私与安全性 → 屏幕与系统音频录制</strong> 里勾选 Liteshot。授权后需要退出并重新打开应用一次。</p>
+  <!-- ========== 中文 ========== -->
+  <section data-zh>
+    <h1>支持</h1>
+    <p class="lead">遇到问题先看下面几条，没解决就写信给我。</p>
 
-  <h2>截图保存到哪里了？</h2>
-  <p>默认保存到 <code>~/Downloads/Liteshot</code>（或 <code>~/Pictures/Liteshot</code>，取决于系统是否放行）。可以在
-  <strong>设置 → 保存</strong> 里点「选择…」改成任意文件夹，重启后依然有效。</p>
+    <div class="card">
+      <p><strong>联系邮箱：</strong><a href="mailto:carl030101@icloud.com">carl030101@icloud.com</a><br>
+      <strong>问题反馈：</strong><a href="https://github.com/RedCarl/Liteshot/issues">GitHub Issues</a></p>
+      <p style="margin-bottom:0">写信时附上 macOS 版本、Liteshot 版本（菜单「关于」里能看到）和复现步骤，会快很多。</p>
+    </div>
 
-  <h2>快捷键是什么？</h2>
-  <ul>
-    <li>开始截图：<code>⌃⌘A</code></li>
-    <li>复制并退出：<code>Enter</code> / 双击 / <code>⌘C</code></li>
-    <li>保存并退出：<code>⌘S</code></li>
-    <li>取消：<code>Esc</code></li>
-    <li>撤销 / 重做：<code>⌘Z</code> / <code>⇧⌘Z</code></li>
-  </ul>
-  <p>全部快捷键都能在「设置 → 快捷键」里改。</p>
+    <h2>第一次截图没有反应？</h2>
+    <p>Liteshot 需要「屏幕录制」权限。首次启动时应用会先弹出自己的说明页，点「打开设置」后，在
+    <strong>系统设置 → 隐私与安全性 → 屏幕与系统音频录制</strong> 里勾选 Liteshot。授权后需要退出并重新打开应用一次。</p>
 
-  <h2>为什么菜单栏没有图标？</h2>
-  <p>Liteshot 是菜单栏应用（不占 Dock）。启动后请查看屏幕右上角菜单栏，图标是一把剪刀。如果菜单栏图标太多被折叠了，先隐藏一些其他图标。</p>
+    <h2>截图保存到哪里了？</h2>
+    <p>默认保存到 <code>~/Downloads/Liteshot</code>（或 <code>~/Pictures/Liteshot</code>，取决于系统是否放行）。可以在
+    <strong>设置 → 保存</strong> 里点「选择…」改成任意文件夹，重启后依然有效。</p>
 
-  <h2>滚动截图拼接有错位？</h2>
-  <p>滚动速度过快时拼接会失准，HUD 会给出提示。建议每次滚动幅度小一些、稍作停顿再继续。</p>
+    <h2>快捷键是什么？</h2>
+    <ul>
+      <li>开始截图：<code>⌃⌘A</code></li>
+      <li>复制并退出：<code>Enter</code> / 双击 / <code>⌘C</code></li>
+      <li>保存并退出：<code>⌘S</code></li>
+      <li>取消：<code>Esc</code></li>
+      <li>撤销 / 重做：<code>⌘Z</code> / <code>⇧⌘Z</code></li>
+    </ul>
+    <p>全部快捷键都能在「设置 → 快捷键」里改。</p>
 
-  <h2>怎么切换语言？</h2>
-  <p>设置 → 语言 / Language → 界面语言，可选「跟随系统」「简体中文」「English」。</p>
+    <h2>为什么菜单栏没有图标？</h2>
+    <p>Liteshot 是菜单栏应用（不占 Dock）。启动后请查看屏幕右上角菜单栏，图标是一把剪刀。如果菜单栏图标太多被折叠了，先隐藏一些其他图标。</p>
 
-  <h2>数据会被上传吗？</h2>
-  <p>不会。Liteshot 不联网，OCR 使用本机 Vision 框架。详见 <a href="privacy.html">隐私政策</a>。</p>
+    <h2>滚动截图拼接有错位？</h2>
+    <p>滚动速度过快时拼接会失准，HUD 会给出提示。建议每次滚动幅度小一些、稍作停顿再继续。</p>
 
-  <footer>© 2026 孙磊 · Liteshot</footer>
+    <h2>怎么切换语言？</h2>
+    <p>设置 → 语言 / Language → 界面语言，可选「跟随系统」「简体中文」「English」。</p>
+
+    <h2>数据会被上传吗？</h2>
+    <p>不会。Liteshot 不联网，OCR 使用本机 Vision 框架。详见 <a href="privacy.html">隐私政策</a>。</p>
+  </section>
+
+  <!-- ========== English ========== -->
+  <section data-en hidden>
+    <h1>Support</h1>
+    <p class="lead">Check the items below first. If that doesn't solve it, send me an email.</p>
+
+    <div class="card">
+      <p><strong>Email:</strong> <a href="mailto:carl030101@icloud.com">carl030101@icloud.com</a><br>
+      <strong>Issue tracker:</strong> <a href="https://github.com/RedCarl/Liteshot/issues">GitHub Issues</a></p>
+      <p style="margin-bottom:0">Include your macOS version, the Liteshot version (menu → About) and the steps to reproduce — it makes things much faster.</p>
+    </div>
+
+    <h2>Nothing happens on the first capture?</h2>
+    <p>Liteshot needs Screen Recording permission. On first launch it shows its own explanation window; tap "Open Settings" and tick Liteshot in
+    <strong>System Settings → Privacy &amp; Security → Screen &amp; System Audio Recording</strong>. After granting, quit and reopen the app once.</p>
+
+    <h2>Where did my screenshot go?</h2>
+    <p>By default to <code>~/Downloads/Liteshot</code> (or <code>~/Pictures/Liteshot</code>, depending on what the system allows). You can pick any folder via
+    <strong>Settings → Saving → Choose…</strong>; the choice survives restarts.</p>
+
+    <h2>What are the shortcuts?</h2>
+    <ul>
+      <li>Start capture: <code>⌃⌘A</code></li>
+      <li>Copy and exit: <code>Enter</code> / double-click / <code>⌘C</code></li>
+      <li>Save and exit: <code>⌘S</code></li>
+      <li>Cancel: <code>Esc</code></li>
+      <li>Undo / redo: <code>⌘Z</code> / <code>⇧⌘Z</code></li>
+    </ul>
+    <p>All of them can be changed in Settings → Shortcuts.</p>
+
+    <h2>Why is there no icon in the Dock?</h2>
+    <p>Liteshot runs as a menu bar app and doesn't take a Dock slot. After launching, look at the top-right menu bar — the icon is a pair of scissors. If your menu bar is crowded, hide a few other icons first.</p>
+
+    <h2>Scrolling capture looks misaligned?</h2>
+    <p>Stitching loses accuracy if you scroll too fast; the HUD warns you when that happens. Scroll in smaller steps with a short pause between them.</p>
+
+    <h2>How do I change the language?</h2>
+    <p>Settings → Language → Interface language, with "Follow System", "简体中文" and "English" as options.</p>
+
+    <h2>Is anything uploaded?</h2>
+    <p>No. Liteshot never goes online; OCR runs on-device with Apple's Vision framework. See the <a href="privacy.html">privacy policy</a>.</p>
+  </section>
+
+  <footer>
+    <span data-zh>© 2026 孙磊 · Liteshot　|　<a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener">鄂ICP备2024059854号-3A</a></span>
+    <span data-en hidden>© 2026 Sun Lei · Liteshot　|　<a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener">鄂ICP备2024059854号-3A</a></span>
+  </footer>
 </main>
+
+<script>
+(function () {
+  var KEY = 'liteshot-lang';
+  var buttons = document.querySelectorAll('[data-set-lang]');
+
+  function apply(lang) {
+    var isEN = lang === 'en';
+    document.documentElement.lang = isEN ? 'en' : 'zh-Hans';
+    document.querySelectorAll('[data-zh]').forEach(function (el) { el.hidden = isEN; });
+    document.querySelectorAll('[data-en]').forEach(function (el) { el.hidden = !isEN; });
+    buttons.forEach(function (b) {
+      b.setAttribute('aria-pressed', String(b.dataset.setLang === lang));
+    });
+    document.title = isEN ? 'Support · Liteshot' : '支持 · Liteshot';
+  }
+
+  var saved = null;
+  try { saved = localStorage.getItem(KEY); } catch (e) {}
+  var initial = saved || ((navigator.language || 'zh').toLowerCase().indexOf('zh') === 0 ? 'zh' : 'en');
+  apply(initial);
+
+  buttons.forEach(function (b) {
+    b.addEventListener('click', function () {
+      var lang = b.dataset.setLang;
+      apply(lang);
+      try { localStorage.setItem(KEY, lang); } catch (e) {}
+    });
+  });
+})();
+</script>
 </body>
 </html>

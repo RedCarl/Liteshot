@@ -3,8 +3,9 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>隐私政策 · Liteshot</title>
+<title>隐私政策 · Privacy Policy · Liteshot</title>
 <link rel="canonical" href="https://redcarl.github.io/Liteshot/privacy.html" />
+<meta name="description" content="Liteshot 隐私政策：不联网、不收集数据。Privacy policy: no network requests, no data collection." />
 <style>
   :root {
     --bg: #0e0f10; --fg: #f3f4f5; --muted: #a4a6ab; --faint: #7b7e84;
@@ -21,11 +22,18 @@
     margin: 0; background: var(--bg); color: var(--fg); font-family: var(--font);
     line-height: 1.75; -webkit-font-smoothing: antialiased;
   }
-  main { max-width: 720px; margin: 0 auto; padding: 72px 24px 96px; }
+  main { max-width: 720px; margin: 0 auto; padding: 56px 24px 96px; }
   a { color: var(--brand); text-decoration: none; }
   a:hover { text-decoration: underline; }
+  .topbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
   .back { font-size: 14px; color: var(--muted); }
-  h1 { font-size: 32px; letter-spacing: -.02em; margin: 24px 0 8px; }
+  .lang { display: flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }
+  .lang button {
+    appearance: none; border: 0; background: transparent; color: var(--muted);
+    font: inherit; font-size: 13px; padding: 5px 14px; cursor: pointer;
+  }
+  .lang button[aria-pressed="true"] { background: var(--panel); color: var(--fg); }
+  h1 { font-size: 32px; letter-spacing: -.02em; margin: 8px 0 8px; }
   .updated { color: var(--faint); font-size: 14px; margin-bottom: 40px; }
   h2 { font-size: 18px; margin: 40px 0 12px; }
   p, li { color: var(--muted); font-size: 16px; }
@@ -37,47 +45,130 @@
   }
   footer { margin-top: 56px; padding-top: 24px; border-top: 1px solid var(--line);
            color: var(--faint); font-size: 14px; }
+  [hidden] { display: none !important; }
 </style>
 </head>
 <body>
 <main>
-  <a class="back" href="index.html">← 返回 Liteshot</a>
-  <h1>隐私政策</h1>
-  <p class="updated">最后更新：2026-11-16</p>
-
-  <div class="card">
-    <p><strong>一句话：Liteshot 不联网，不收集任何数据。</strong>截图与文字识别全部在你的 Mac 上完成，没有任何内容会离开这台电脑。</p>
+  <div class="topbar">
+    <a class="back" href="index.html"><span data-zh>← 返回 Liteshot</span><span data-en hidden>← Back to Liteshot</span></a>
+    <div class="lang" role="group" aria-label="Language / 语言">
+      <button type="button" data-set-lang="zh" aria-pressed="true">中文</button>
+      <button type="button" data-set-lang="en" aria-pressed="false">EN</button>
+    </div>
   </div>
 
-  <h2>我们不收集什么</h2>
-  <ul>
-    <li>不收集任何个人信息、账号信息或设备标识</li>
-    <li>不包含统计、分析、崩溃上报或广告 SDK</li>
-    <li>不发起任何网络请求（应用内没有联网代码）</li>
-    <li>不读取、上传或分析你的截图内容</li>
-  </ul>
+  <!-- ========== 中文 ========== -->
+  <section data-zh>
+    <h1>隐私政策</h1>
+    <p class="updated">最后更新：2026-11-16</p>
 
-  <h2>数据如何被处理</h2>
-  <p>截图、标注、滚动拼接、二维码识别都在本机内存中完成。文字识别（OCR）调用 macOS 内置的 Vision 框架，同样在本机运行。生成的图片只会写入你在「设置」里指定的本地文件夹。</p>
-  <p>截图历史保存在本机的应用数据目录内，最多保留 50 张，可在应用内清空。</p>
+    <div class="card">
+      <p><strong>一句话：Liteshot 不联网，不收集任何数据。</strong>截图与文字识别全部在你的 Mac 上完成，没有任何内容会离开这台电脑。</p>
+    </div>
 
-  <h2>系统权限</h2>
-  <p><strong>屏幕录制：</strong>仅用于截图功能。首次使用时应用会先显示自己的说明页，再由你决定是否在「系统设置 → 隐私与安全性 → 屏幕与系统音频录制」中授权。你可以随时在那里撤销。</p>
-  <p><strong>文件夹访问：</strong>仅用于把图片写入你选择的保存目录（默认是「图片」或「下载」下的 Liteshot 文件夹）。</p>
+    <h2>我们不收集什么</h2>
+    <ul>
+      <li>不收集任何个人信息、账号信息或设备标识</li>
+      <li>不包含统计、分析、崩溃上报或广告 SDK</li>
+      <li>不发起任何网络请求（应用内没有联网代码）</li>
+      <li>不读取、上传或分析你的截图内容</li>
+    </ul>
 
-  <h2>第三方服务</h2>
-  <p>没有。应用不集成任何第三方 SDK，也不与任何服务器通信。</p>
+    <h2>数据如何被处理</h2>
+    <p>截图、标注、滚动拼接、二维码识别都在本机内存中完成。文字识别（OCR）调用 macOS 内置的 Vision 框架，同样在本机运行。生成的图片只会写入你在「设置」里指定的本地文件夹。</p>
+    <p>截图历史保存在本机的应用数据目录内，最多保留 50 张，可在应用内清空。</p>
 
-  <h2>儿童隐私</h2>
-  <p>应用不收集任何人的数据，自然也不收集儿童的数据。</p>
+    <h2>系统权限</h2>
+    <p><strong>屏幕录制：</strong>仅用于截图功能。首次使用时应用会先显示自己的说明页，再由你决定是否在「系统设置 → 隐私与安全性 → 屏幕与系统音频录制」中授权。你可以随时在那里撤销。</p>
+    <p><strong>文件夹访问：</strong>仅用于把图片写入你选择的保存目录（默认是「图片」或「下载」下的 Liteshot 文件夹）。</p>
 
-  <h2>政策变更</h2>
-  <p>如果将来隐私实践有变化，本页会更新并修改上方日期；重大变化会在应用更新说明中提示。</p>
+    <h2>第三方服务</h2>
+    <p>没有。应用不集成任何第三方 SDK，也不与任何服务器通信。</p>
 
-  <h2>联系我们</h2>
-  <p>任何隐私相关问题，发邮件到 <a href="mailto:carl030101@icloud.com">carl030101@icloud.com</a>。</p>
+    <h2>儿童隐私</h2>
+    <p>应用不收集任何人的数据，自然也不收集儿童的数据。</p>
 
-  <footer>© 2026 孙磊 · Liteshot</footer>
+    <h2>政策变更</h2>
+    <p>如果将来隐私实践有变化，本页会更新并修改上方日期；重大变化会在应用更新说明中提示。</p>
+
+    <h2>联系我们</h2>
+    <p>任何隐私相关问题，发邮件到 <a href="mailto:carl030101@icloud.com">carl030101@icloud.com</a>。</p>
+  </section>
+
+  <!-- ========== English ========== -->
+  <section data-en hidden>
+    <h1>Privacy Policy</h1>
+    <p class="updated">Last updated: November 16, 2026</p>
+
+    <div class="card">
+      <p><strong>In one sentence: Liteshot never goes online and collects no data.</strong> Screenshots and text recognition are processed entirely on your Mac. Nothing leaves the machine.</p>
+    </div>
+
+    <h2>What we don't collect</h2>
+    <ul>
+      <li>No personal information, account information, or device identifiers</li>
+      <li>No analytics, crash reporting, or advertising SDKs</li>
+      <li>No network requests at all — the app contains no networking code</li>
+      <li>No reading, uploading, or analyzing of your screenshots</li>
+    </ul>
+
+    <h2>How data is processed</h2>
+    <p>Capture, annotation, scrolling stitch, and QR detection all happen in memory on your Mac. Text recognition (OCR) uses Apple's built-in Vision framework and runs on-device as well. Generated images are written only to the local folder you choose in Settings.</p>
+    <p>Capture history is stored in the app's local data folder, capped at 50 items, and can be cleared from inside the app.</p>
+
+    <h2>System permissions</h2>
+    <p><strong>Screen Recording:</strong> used only for capturing the screen. The app does not trigger the system prompt on launch — it shows its own explanation first, and you decide in System Settings → Privacy &amp; Security → Screen &amp; System Audio Recording. You can revoke it there at any time.</p>
+    <p><strong>Folder access:</strong> used only to write images into the save folder you pick (by default a Liteshot folder inside Pictures or Downloads).</p>
+
+    <h2>Third-party services</h2>
+    <p>None. The app integrates no third-party SDKs and talks to no servers.</p>
+
+    <h2>Children's privacy</h2>
+    <p>The app collects no data from anyone, children included.</p>
+
+    <h2>Changes to this policy</h2>
+    <p>If our privacy practices change, this page will be updated along with the date above; significant changes will be called out in the app's release notes.</p>
+
+    <h2>Contact</h2>
+    <p>For any privacy question, email <a href="mailto:carl030101@icloud.com">carl030101@icloud.com</a>.</p>
+  </section>
+
+  <footer>
+    <span data-zh>© 2026 孙磊 · Liteshot　|　<a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener">鄂ICP备2024059854号-3A</a></span>
+    <span data-en hidden>© 2026 Sun Lei · Liteshot　|　<a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener">鄂ICP备2024059854号-3A</a></span>
+  </footer>
 </main>
+
+<script>
+(function () {
+  var KEY = 'liteshot-lang';
+  var buttons = document.querySelectorAll('[data-set-lang]');
+
+  function apply(lang) {
+    var isEN = lang === 'en';
+    document.documentElement.lang = isEN ? 'en' : 'zh-Hans';
+    document.querySelectorAll('[data-zh]').forEach(function (el) { el.hidden = isEN; });
+    document.querySelectorAll('[data-en]').forEach(function (el) { el.hidden = !isEN; });
+    buttons.forEach(function (b) {
+      b.setAttribute('aria-pressed', String(b.dataset.setLang === lang));
+    });
+    document.title = isEN ? 'Privacy Policy · Liteshot' : '隐私政策 · Liteshot';
+  }
+
+  var saved = null;
+  try { saved = localStorage.getItem(KEY); } catch (e) {}
+  var initial = saved || ((navigator.language || 'zh').toLowerCase().indexOf('zh') === 0 ? 'zh' : 'en');
+  apply(initial);
+
+  buttons.forEach(function (b) {
+    b.addEventListener('click', function () {
+      var lang = b.dataset.setLang;
+      apply(lang);
+      try { localStorage.setItem(KEY, lang); } catch (e) {}
+    });
+  });
+})();
+</script>
 </body>
 </html>
