@@ -130,6 +130,24 @@ img { max-width: 100%; height: auto; display: block; }
 }
 .nav-link:hover { color: var(--fg); }
 
+.nav-right { display: flex; align-items: center; gap: 14px; }
+
+.lang {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.lang button {
+  appearance: none; border: 0; background: transparent; color: var(--muted);
+  font: inherit; font-size: 12.5px; padding: 4px 12px; cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease;
+}
+.lang button:hover { color: var(--fg); }
+.lang button[aria-pressed="true"] { background: var(--panel); color: var(--fg); }
+
+[hidden] { display: none !important; }
+
 /* ---------- 首屏：左文字 / 右预览 ---------- */
 
 .hero {
@@ -308,18 +326,25 @@ footer a:hover { color: var(--fg); }
       <img src="assets/icon.png" width="28" height="28" alt="" />
       Liteshot
     </a>
-    <a class="nav-link" href="https://github.com/RedCarl/Liteshot" target="_blank" rel="noopener">GitHub ↗</a>
+    <div class="nav-right">
+      <div class="lang" role="group" aria-label="Language / 语言">
+        <button type="button" data-set-lang="zh" aria-pressed="true">中文</button>
+        <button type="button" data-set-lang="en" aria-pressed="false">EN</button>
+      </div>
+      <a class="nav-link" href="https://github.com/RedCarl/Liteshot" target="_blank" rel="noopener">GitHub ↗</a>
+    </div>
   </header>
 
   <main id="top">
     <section class="hero">
       <div class="copy">
-        <p class="eyebrow">macOS 14+ · Apple 芯片与 Intel</p>
+        <p class="eyebrow"><span data-zh>macOS 14+ · Apple 芯片与 Intel</span><span data-en hidden>macOS 14+ · Apple silicon &amp; Intel</span></p>
 
-        <h1>截图，<br />也可以<em>很轻</em>。</h1>
+        <h1><span data-zh>截图，</span><span data-en hidden>Capture,</span><br /><span data-zh>也可以<em>很轻</em>。</span><span data-en hidden>made <em>light</em>.</span></h1>
 
         <p class="lede">
-          菜单栏常驻，框选、标注、复制一步到位。
+          <span data-zh>菜单栏常驻，框选、标注、复制一步到位。</span>
+          <span data-en hidden>Lives in the menu bar. Select, mark up, copy — in one step.</span>
         </p>
 
         <div class="actions">
@@ -329,7 +354,7 @@ footer a:hover { color: var(--fg); }
           </a>
           <a class="btn btn-ghost" href="https://github.com/RedCarl/Liteshot" target="_blank" rel="noopener">
             <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
-            源代码
+            <span data-zh>源代码</span><span data-en hidden>Source</span>
           </a>
         </div>
 
@@ -345,12 +370,49 @@ footer a:hover { color: var(--fg); }
 
   <footer>
     <div class="row">
-      <span>© 2026 Liteshot</span>
-      <span><a href="privacy.html">隐私政策</a> · <a href="support.html">支持</a></span>
+      <span>© 2026 Liteshot　|　<a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener">鄂ICP备2024059854号-3A</a></span>
+      <span><a href="privacy.html"><span data-zh>隐私政策</span><span data-en hidden>Privacy</span></a> · <a href="support.html"><span data-zh>支持</span><span data-en hidden>Support</span></a></span>
     </div>
   </footer>
 
 </div>
 
+
+<script>
+(function () {
+  var KEY = 'liteshot-lang';
+  var TITLES = {
+    zh: 'Liteshot — 轻量的 macOS 截图与标注工具',
+    en: 'Liteshot — a lightweight screenshot and markup tool for macOS'
+  };
+  var DESCS = {
+    zh: 'Liteshot 是一个菜单栏常驻的原生 macOS 截图工具：区域/窗口/滚动截图、内联标注、OCR、贴图。Swift + AppKit，开源 MIT。',
+    en: 'Liteshot is a native macOS screenshot tool that lives in the menu bar: region, window and scrolling capture, inline markup, OCR and pin. Swift + AppKit, open source (MIT).'
+  };
+  var buttons = document.querySelectorAll('[data-set-lang]');
+  var metaDesc = document.querySelector('meta[name="description"]');
+
+  function apply(lang) {
+    var isEN = lang === 'en';
+    document.documentElement.lang = isEN ? 'en' : 'zh-CN';
+    document.querySelectorAll('[data-zh]').forEach(function (el) { el.hidden = isEN; });
+    document.querySelectorAll('[data-en]').forEach(function (el) { el.hidden = !isEN; });
+    buttons.forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.setLang === lang)); });
+    document.title = isEN ? TITLES.en : TITLES.zh;
+    if (metaDesc) metaDesc.setAttribute('content', isEN ? DESCS.en : DESCS.zh);
+  }
+
+  var saved = null;
+  try { saved = localStorage.getItem(KEY); } catch (e) {}
+  apply(saved || ((navigator.language || 'zh').toLowerCase().indexOf('zh') === 0 ? 'zh' : 'en'));
+
+  buttons.forEach(function (b) {
+    b.addEventListener('click', function () {
+      apply(b.dataset.setLang);
+      try { localStorage.setItem(KEY, b.dataset.setLang); } catch (e) {}
+    });
+  });
+})();
+</script>
 </body>
 </html>
