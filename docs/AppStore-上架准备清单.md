@@ -39,7 +39,7 @@
 
 | 项 | 状态 |
 |---|---|
-| 截图套图 3 张 | ✅ `docs/appstore/screenshots/`，2880×1800（PNG + JPEG 各一组） |
+| 截图套图 3 张 | ✅ 本机 `~/Documents/Liteshot-design-assets/docs/appstore/screenshots/`，2880×1800（PNG + JPEG 各一组），不入库 |
 | 隐私政策 & 支持页 | ✅ `site/privacy.html`、`site/support.html`，链接已改成相对路径，任意域名可用 |
 | 商品文案（中英） | ✅ `docs/AppStore-商品文案.md` |
 | 站点发布 | ⬜ 需要把 `site/` 推到 GitHub Pages，隐私/支持链接才生效 |

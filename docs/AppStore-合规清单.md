@@ -14,7 +14,7 @@
 | 应用类别 | 上架需有类别 | `LSApplicationCategoryType = public.app-category.productivity` |
 | 文件夹用途说明 | 访问受保护目录需要用途字符串 | 补 `NSDownloadsFolderUsageDescription` / Desktop / Documents |
 | 版权 | 元数据准确 | `NSHumanReadableCopyright = © 2026 孙磊` |
-| 应用图标 | ITMS-90717：图标不得透明、不得含 alpha；macOS 26 非满幅图标会被系统「关进灰底图标监狱」 | 10 个尺寸全部重制为**不透明满幅**（RGB，无 alpha），由 `design/logo-apple-style/build_appstore_icons.py` 从透明原图可复现 |
+| 应用图标 | ITMS-90717：图标不得透明、不得含 alpha；macOS 26 非满幅图标会被系统「关进灰底图标监狱」 | 10 个尺寸全部重制为**不透明满幅**（RGB，无 alpha），由本机 `~/Documents/Liteshot-design-assets/design/logo-apple-style/build_appstore_icons.py` 从透明原图可复现（设计与截图资产不入库） |
 | 发布包里的隐藏命令 | Guideline 2.3.1 不鼓励隐藏功能 | `--selftest*`、`--permission`、`--where` 等全部收进 `#if DEBUG`；Release 二进制里 `SELFTEST` 字样为 0 |
 | 自检脚手架 | 沙盒下 `/tmp` 不可写，自检会假失败 | 路径改为容器内临时目录 |
 | Bundle ID / 版本号 | — | `cn.carljoy.liteshot` / `0.4.0` |
@@ -51,7 +51,7 @@
 ## 四、需要你配合验证的两件事
 
 ### 1. 图标外观确认
-图标已从「圆角卡片 + 透明四角」改成「满幅渐变 + 剪刀」，这是 Apple 现在要求的形态（系统自己套 squircle）。旧的透明版保存在 `design/logo-apple-style/icon-transparent-original/`，随时可以回滚。
+图标已从「圆角卡片 + 透明四角」改成「满幅渐变 + 剪刀」，这是 Apple 现在要求的形态（系统自己套 squircle）。旧的透明版保存在本机 `~/Documents/Liteshot-design-assets/design/logo-apple-style/icon-transparent-original/`，随时可以回滚。
 
 ### 2. `~/Pictures` 权限要用真实签名复验
 本机没有可用签名证书，只能用 ad-hoc 验证，结果：`downloads` 可写、`pictures` 被拒。所以沙盒下默认保存到 `~/Downloads/Liteshot`（正常可见，不是容器深处）。
