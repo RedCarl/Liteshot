@@ -58,11 +58,13 @@ macOS 14 及以上，Apple 芯片与 Intel 都支持。
 
 **App Store：<https://apps.apple.com/cn/app/id6835743767>**
 
-- 唯一分发渠道是 App Store，更新由 App Store 推送
+**GitHub Release：<https://github.com/RedCarl/Liteshot/releases>**
+
+- App Store 是主渠道，更新由 App Store 推送
+- GitHub Release 提供 ad-hoc 签名、未公证的 dmg / zip；首次打开需要在 Finder 里右键 →「打开」
 - 首次截图需要在 系统设置 → 隐私与安全性 → 屏幕与系统音频录制 中授权；应用会先显示自己的权限引导页
 
-源码在 <https://github.com/RedCarl/Liteshot>，仓库只托管源代码，不提供编译好的安装包。
-需要自己构建的话：`xcodegen generate` 后打开 `Liteshot.xcodeproj` 运行，或 `xcodebuild` 自行构建。
+源码在 <https://github.com/RedCarl/Liteshot>。也可以自己构建：`xcodegen generate` 后打开 `Liteshot.xcodeproj` 运行，或 `xcodebuild` 自行构建。
 
 ---
 
@@ -113,11 +115,11 @@ macOS 要求「屏幕录制」权限。应用会先显示自己的权限引导�
 
 **怎么更新？**
 
-由 App Store 推送更新，不用手动处理；应用内不联网检查版本。
+App Store 渠道由 App Store 推送，不用手动处理；GitHub Release 渠道下载新包覆盖安装即可。应用内不联网检查版本。
 
 **源码可以自己编译吗？**
 
-可以。`xcodegen generate` 后打开 `Liteshot.xcodeproj`，用你自己的开发者证书签名运行。仓库不发布编译好的安装包。
+可以。`xcodegen generate` 后打开 `Liteshot.xcodeproj`，用你自己的开发者证书签名运行。
 
 ---
 

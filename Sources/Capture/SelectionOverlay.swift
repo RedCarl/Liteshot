@@ -35,7 +35,19 @@ final class SelectionOverlayView: NSView {
     private let image: CGImage
     private let displayImage: NSImage
     private var dragStart: CGPoint?
-    private var selection: CGRect = .zero
+    private var _selection: CGRect = .zero
+    /// 选区几何变更是最热的路径（每个 mouseDragged 都会走）。遮罩是选区的纯函数，
+    /// 选区外的像素不会变，所以只失效「新旧选区 + 周边装饰」覆盖的矩形就够了，
+    /// 不需要把整块 5K 表面重画一遍。
+    private var selection: CGRect {
+        get { _selection }
+        set {
+            guard newValue != _selection else { return }
+            let old = _selection
+            _selection = newValue
+            invalidateSelectionChrome(from: old, to: newValue)
+        }
+    }
     private var cursorPoint: CGPoint?
     private var currentColor: NSColor?
     private var statusMessage: String?
@@ -43,8 +55,18 @@ final class SelectionOverlayView: NSView {
     private lazy var sampler = PixelSampler(image: image)
     private var snapGuidesX: [CGFloat] = []
     private var snapGuidesY: [CGFloat] = []
-    private var activeSnapX: CGFloat?
-    private var activeSnapY: CGFloat?
+    private var activeSnapX: CGFloat? {
+        didSet {
+            guard oldValue != activeSnapX else { return }
+            invalidateGuideLine(old: oldValue, new: activeSnapX, vertical: true)
+        }
+    }
+    private var activeSnapY: CGFloat? {
+        didSet {
+            guard oldValue != activeSnapY else { return }
+            invalidateGuideLine(old: oldValue, new: activeSnapY, vertical: false)
+        }
+    }
     private let snapThreshold: CGFloat = 8
 
     private struct WindowHit {
@@ -96,7 +118,9 @@ final class SelectionOverlayView: NSView {
     private var hoverTipSignature = ""
     private var hoverTipWork: DispatchWorkItem?
     private var selectionMoveMode = false
-    private var captureCornerRadius: CGFloat = 0
+    private var captureCornerRadius: CGFloat = 0 {
+        didSet { setNeedsDisplay(chromeRect(_selection)) }
+    }
     private var captureShadow = false
     private let selectionBorderColor = NSColor(hex: "#2F7CF6") ?? .controlAccentColor
     private var colorSwatches: [ColorSwatchButton] = []
@@ -489,9 +513,74 @@ final class SelectionOverlayView: NSView {
         )
     }
 
+    // MARK: - 局部失效
+
+    /// 阴影和尺寸标签会伸出选区之外，失效矩形要按这个余量放大。
+    private var chromeHalo: CGFloat {
+        max(220, CGFloat(AppSettings.shared.exportShadowBlur) + 32)
+    }
+
+    private func chromeRect(_ rect: CGRect) -> CGRect {
+        guard rect.width > 0, rect.height > 0 else { return .null }
+        return rect.insetBy(dx: -chromeHalo, dy: -chromeHalo)
+    }
+
+    private func invalidateSelectionChrome(from old: CGRect, to new: CGRect) {
+        let oldRect = chromeRect(old)
+        let newRect = chromeRect(new)
+        // 空选区时画的是整屏虚线和提示文字，退化成整屏（一次拖拽只发生一次）。
+        guard !oldRect.isNull, !newRect.isNull else {
+            needsDisplay = true
+            return
+        }
+        setNeedsDisplay(oldRect.union(newRect))
+    }
+
+    /// 吸附参考线是一整条竖线/横线，新旧两条各失效一条细长条即可。
+    private func invalidateGuideLine(old: CGFloat?, new: CGFloat?, vertical: Bool) {
+        let values = [old, new].compactMap { $0 }
+        guard let minimum = values.min(), let maximum = values.max() else { return }
+        if vertical {
+            setNeedsDisplay(CGRect(x: minimum - 3, y: 0, width: maximum - minimum + 6, height: bounds.height))
+        } else {
+            setNeedsDisplay(CGRect(x: 0, y: minimum - 3, width: bounds.width, height: maximum - minimum + 6))
+        }
+    }
+
+    /// hover 高亮：边框之外还有标题条/角标，最多伸出窗口矩形约 40pt。
+    private func hoverDirtyRect(_ rect: CGRect) -> CGRect {
+        rect.insetBy(dx: -50, dy: -50)
+    }
+
+    /// 放大镜镜片 + 色值面板可能覆盖的矩形（面板可能在镜片上方或下方）。
+    private func magnifierDirtyRect(center: CGPoint) -> CGRect {
+        let side: CGFloat = 150
+        let panel: CGFloat = 64
+        let gap: CGFloat = 6
+        let lens = CGRect(x: center.x - side / 2, y: center.y - side / 2, width: side, height: side)
+        let below = CGRect(x: lens.minX, y: lens.minY - panel - gap, width: side, height: panel)
+        let above = CGRect(x: lens.minX, y: lens.maxY + gap, width: side, height: panel)
+        return lens.union(below).union(above).insetBy(dx: -12, dy: -12)
+    }
+
+    private func invalidateMagnifier(old: CGPoint?, new: CGPoint?) {
+        var dirty = CGRect.null
+        if let old { dirty = dirty.union(magnifierDirtyRect(center: old)) }
+        if let new { dirty = dirty.union(magnifierDirtyRect(center: new)) }
+        if dirty.isNull {
+            needsDisplay = true
+        } else {
+            setNeedsDisplay(dirty)
+        }
+    }
+
     // MARK: - Drawing
 
     override func draw(_ dirtyRect: NSRect) {
+        // 现在只重绘脏区，所以先把脏区明确刷成透明：遮罩、边框、放大镜都是视图状态的
+        // 纯函数，显式清一次比依赖 AppKit 的清除时机更保险，避免旧像素残留。
+        dirtyRect.fill(using: .clear)
+
         // 选区外遮罩，选区内保持实时桌面；圆角对遮罩和边框同时生效。
         drawSelectionMask()
 
@@ -625,11 +714,15 @@ final class SelectionOverlayView: NSView {
 
     @objc private func stepMotion() {
         var running = false
+        var dirty = CGRect.null
 
         if let start = hoverAnimStartRect, let target = hoverAnimTarget {
+            let previous = hoverAnimRect ?? start
             let t = min(1, Date().timeIntervalSince(hoverAnimStartTime) / 0.14)
             let eased = CGFloat(1 - pow(1 - t, 3))
             hoverAnimRect = interpolate(start, target, eased)
+            dirty = dirty.union(hoverDirtyRect(hoverAnimRect ?? start))
+            dirty = dirty.union(hoverDirtyRect(previous))
             if t >= 1 {
                 hoverAnimRect = target
                 hoverAnimStartRect = nil
@@ -640,12 +733,15 @@ final class SelectionOverlayView: NSView {
         }
 
         if let start = magnifierCenterStart, let target = magnifierCenterTarget {
+            let previous = magnifierCenter ?? start
             let t = min(1, Date().timeIntervalSince(magnifierCenterStartTime) / 0.04)
             let eased = CGFloat(1 - pow(1 - t, 3))
             magnifierCenter = CGPoint(
                 x: start.x + (target.x - start.x) * eased,
                 y: start.y + (target.y - start.y) * eased
             )
+            dirty = dirty.union(magnifierDirtyRect(center: previous))
+            dirty = dirty.union(magnifierDirtyRect(center: magnifierCenter ?? start))
             if t >= 1 {
                 magnifierCenter = target
                 magnifierCenterStart = nil
@@ -655,7 +751,10 @@ final class SelectionOverlayView: NSView {
             }
         }
 
-        needsDisplay = true
+        // 只失效这一帧真正动过的区域，而不是整块屏幕。
+        if !dirty.isNull {
+            setNeedsDisplay(dirty)
+        }
         if !running {
             motionTimer?.invalidate()
             motionTimer = nil
@@ -1398,7 +1497,7 @@ final class SelectionOverlayView: NSView {
         styleBar?.isHidden = true
         toolStyleBar?.isHidden = true
         sizeLabel?.isHidden = true
-        needsDisplay = true
+        // 遮罩/边框的失效由上面的 selection setter 负责。
     }
 
     private func commitSelectionFrame(_ rect: CGRect) {
@@ -1469,12 +1568,11 @@ final class SelectionOverlayView: NSView {
             self.captureCornerRadius = radius
             self.chrome?.cornerRadius = radius
             self.chrome?.needsDisplay = true
-            self.needsDisplay = true
         }
         bar.onShadowChanged = { [weak self] shadow in
             guard let self else { return }
             self.captureShadow = shadow
-            self.needsDisplay = true
+            self.setNeedsDisplay(self.chromeRect(self.selection))
         }
 
         let width: CGFloat = 378
@@ -1745,7 +1843,14 @@ final class SelectionOverlayView: NSView {
         let pixel = imagePoint(point)
         currentColor = sampler?.color(atX: Int(pixel.x), y: Int(pixel.y))
 
-        if allowsWindowPicking, dragStart == nil, selection.width == 0, !isEditing {
+        updateHoverTip(at: point)
+        // 编辑状态下的遮罩/边框/放大镜都是静态的，不要每个 mouseMoved 都整屏重绘；
+        // 只更新 hover 提示这个小视图，避免掉帧。
+        if isEditing { return }
+
+        var dirty = CGRect.null
+
+        if allowsWindowPicking, dragStart == nil, selection.width == 0 {
             let newIndex = topmostWindowIndex(at: point)
             if newIndex != hoveredWindowIndex {
                 hoveredWindowIndex = newIndex
@@ -1753,14 +1858,19 @@ final class SelectionOverlayView: NSView {
                     windowHits.indices.contains(index) ? windowHits[index].rect : nil
                 } ?? bounds
                 animateHoverFrame(to: target)
+                // hover 目标换了：没选中窗口时整屏画的是虚线框，只有切换这一下要整屏失效。
+                dirty = dirty.union(bounds)
             }
         }
+
+        let oldCenter = magnifierCenter ?? magnifierCenter(for: point)
         animateMagnifierCenter(to: point)
-        updateHoverTip(at: point)
-        // 编辑状态下的遮罩/边框是静态的，不要每个 mouseMoved 都整屏重绘；
-        // 只更新 hover 提示这个小视图，避免掉帧。
-        if !isEditing {
-            needsDisplay = true
+        let newCenter = magnifierCenter ?? magnifierCenter(for: point)
+        dirty = dirty.union(magnifierDirtyRect(center: oldCenter))
+        dirty = dirty.union(magnifierDirtyRect(center: newCenter))
+
+        if !dirty.isNull {
+            setNeedsDisplay(dirty)
         }
     }
 
@@ -1823,7 +1933,9 @@ final class SelectionOverlayView: NSView {
     override func mouseDragged(with event: NSEvent) {
         guard let start = dragStart else { return }
         let raw = convert(event.locationInWindow, from: nil)
+        let oldCenter = magnifierCenter ?? magnifierCenter(for: raw)
         animateMagnifierCenter(to: raw)
+        invalidateMagnifier(old: oldCenter, new: magnifierCenter ?? magnifierCenter(for: raw))
         let snappedX = snapped(raw.x, guides: snapGuidesX)
         let snappedY = snapped(raw.y, guides: snapGuidesY)
         activeSnapX = snappedX.guide
@@ -1852,8 +1964,8 @@ final class SelectionOverlayView: NSView {
         }
         let x = current.x >= start.x ? start.x : start.x - width
         let y = current.y >= start.y ? start.y : start.y - height
+        // 失效由 selection 的 setter 和新旧吸附线负责。
         selection = CGRect(x: x, y: y, width: width, height: height)
-        needsDisplay = true
     }
 
     override func mouseUp(with event: NSEvent) {
@@ -2065,7 +2177,11 @@ final class SelectionOverlayView: NSView {
         let eased = 1 - pow(1 - t, 3)
         magnifierAlpha = magnifierStartAlpha + (magnifierTarget - magnifierStartAlpha) * CGFloat(eased)
         magnifierScale = magnifierStartScale + (magnifierTargetScale - magnifierStartScale) * CGFloat(eased)
-        needsDisplay = true
+        if let center = magnifierCenter ?? cursorPoint {
+            setNeedsDisplay(magnifierDirtyRect(center: center))
+        } else {
+            needsDisplay = true
+        }
         if t >= 1 {
             magnifierTimer?.invalidate()
             magnifierTimer = nil

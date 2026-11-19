@@ -104,20 +104,33 @@ enum SaveService {
     }
 }
 
+@MainActor
 enum ClipboardService {
+    /// 连续复制计数：编码在后台跑，只让最后一次复制真正落到剪贴板。
+    private static var generation = 0
+
+    /// 5K 截图一次 PNG + 未压缩 TIFF 编码是百毫秒级的主线程开销，全压在快门之后。
+    /// 编码挪到后台，编完再回主线程写 pasteboard。
     static func copy(image: CGImage) {
-        let pasteboard = NSPasteboard.general
-        let item = NSPasteboardItem()
-
-        if let png = ImageEncoding.pngData(from: image) {
-            item.setData(png, forType: .png)
+        generation &+= 1
+        let token = generation
+        Task.detached(priority: .userInitiated) {
+            let png = ImageEncoding.pngData(from: image)
+            let nsImage = NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
+            let tiff = nsImage.tiffRepresentation
+            await MainActor.run {
+                guard token == generation else { return }
+                let pasteboard = NSPasteboard.general
+                let item = NSPasteboardItem()
+                if let png {
+                    item.setData(png, forType: .png)
+                }
+                if let tiff {
+                    item.setData(tiff, forType: .tiff)
+                }
+                pasteboard.clearContents()
+                pasteboard.writeObjects([item])
+            }
         }
-        let nsImage = NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
-        if let tiff = nsImage.tiffRepresentation {
-            item.setData(tiff, forType: .tiff)
-        }
-
-        pasteboard.clearContents()
-        pasteboard.writeObjects([item])
     }
 }

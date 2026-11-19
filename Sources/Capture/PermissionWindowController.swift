@@ -11,7 +11,13 @@ final class PermissionModel: ObservableObject {
     var startCapture: () -> Void = {}
 
     func refresh() {
-        granted = ScreenPermission.isGranted
+        // @Published 每次赋值都会发变更通知，即使值没变。视图里有个 1 秒
+        // 定时器调这个方法，无条件赋值会让 body 每秒重建一次、连同新建
+        // 一个 Timer 订阅，白白把整个窗口一直拽醒。
+        let current = ScreenPermission.isGranted
+        if current != granted {
+            granted = current
+        }
     }
 }
 

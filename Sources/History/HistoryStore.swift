@@ -24,6 +24,9 @@ final class HistoryStore {
     private let indexURL: URL
     private let maxCount: Int
     private(set) var items: [HistoryItem] = []
+    /// 列表里每个格子都会要缩略图，而重新打开窗口就是一次 reloadData。
+    /// 不缓存的话每次打开都要把十几张全分辨率 PNG 重新读盘 + 解码。
+    private let thumbnailCache = NSCache<NSURL, NSImage>()
 
     private struct IndexEntry: Codable {
         let file: String
@@ -44,29 +47,35 @@ final class HistoryStore {
         }
         self.indexURL = self.directory.appendingPathComponent("index.json")
         self.maxCount = maxCount
+        self.thumbnailCache.countLimit = 64
         try? FileManager.default.createDirectory(at: self.directory, withIntermediateDirectories: true)
         reload()
     }
 
     func record(_ image: CGImage) {
+        guard let url = Self.writeFile(image: image, in: directory) else { return }
+        register(url, width: image.width, height: image.height)
+    }
+
+    /// 编码 + 落盘。5K 一张截图编码一次要几十到上百毫秒，所以这一步不要求主线程：
+    /// 抓完图可以放到后台跑，登记列表时再回主线程调 register。
+    nonisolated static func writeFile(image: CGImage, in directory: URL, date: Date = Date()) -> URL? {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyyMMdd-HHmmss"
-        let name = "shot-\(formatter.string(from: Date()))-\(UUID().uuidString.prefix(6)).png"
+        let name = "shot-\(formatter.string(from: date))-\(UUID().uuidString.prefix(6)).png"
         let url = directory.appendingPathComponent(name)
 
-        guard let png = ImageEncoding.pngData(from: image) else { return }
+        guard let png = ImageEncoding.pngData(from: image) else { return nil }
         do {
             try png.write(to: url)
         } catch {
-            return
+            return nil
         }
+        return url
+    }
 
-        let item = HistoryItem(
-            url: url,
-            date: Date(),
-            width: image.width,
-            height: image.height
-        )
+    func register(_ url: URL, width: Int, height: Int, date: Date = Date()) {
+        let item = HistoryItem(url: url, date: date, width: width, height: height)
         items.insert(item, at: 0)
         trim()
         saveIndex()
@@ -92,7 +101,9 @@ final class HistoryStore {
     }
 
     func thumbnail(for item: HistoryItem, maxPixelSize: Int = 360) -> NSImage? {
-        guard let source = CGImageSourceCreateWithURL(item.url as CFURL, nil) else { return nil }
+        let cacheKey = item.url as NSURL
+        if let cached = thumbnailCache.object(forKey: cacheKey) { return cached }
+        guard let source = CGImageSourceCreateWithURL(cacheKey as CFURL, nil) else { return nil }
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true,
@@ -101,17 +112,21 @@ final class HistoryStore {
         guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
             return nil
         }
-        return NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
+        let thumbnail = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
+        thumbnailCache.setObject(thumbnail, forKey: cacheKey)
+        return thumbnail
     }
 
     func delete(_ item: HistoryItem) {
         try? FileManager.default.removeItem(at: item.url)
+        thumbnailCache.removeObject(forKey: item.url as NSURL)
         items.removeAll { $0.id == item.id }
         saveIndex()
     }
 
     func clear() {
         items.forEach { try? FileManager.default.removeItem(at: $0.url) }
+        thumbnailCache.removeAllObjects()
         items.removeAll()
         saveIndex()
     }
@@ -120,6 +135,7 @@ final class HistoryStore {
         while items.count > maxCount {
             let removed = items.removeLast()
             try? FileManager.default.removeItem(at: removed.url)
+            thumbnailCache.removeObject(forKey: removed.url as NSURL)
         }
     }
 

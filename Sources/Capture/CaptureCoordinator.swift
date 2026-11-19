@@ -799,6 +799,8 @@ final class CaptureCoordinator {
     }
 
     private func startScreenSwitchTimer() {
+        // 单屏机器上没有任何屏幕可切，8.3 Hz 的检查纯属白跑。
+        guard NSScreen.screens.count > 1 else { return }
         screenSwitchTimer?.invalidate()
         screenSwitchTimer = Timer.scheduledTimer(
             timeInterval: 0.12,
@@ -976,8 +978,6 @@ final class CaptureCoordinator {
 
     private func commit(_ image: CGImage) {
         let settings = AppSettings.shared
-        HistoryStore.shared.record(image)
-
         let exportOptions = ExportOptions(
             scale: settings.exportScale1x ? 0.5 : 1,
             cornerRadius: CGFloat(settings.exportCornerRadius),
@@ -987,27 +987,53 @@ final class CaptureCoordinator {
             shadowColorHex: settings.exportShadowColorHex,
             transparent: settings.exportTransparent
         )
+        // 渲染要碰 AppKit 绘图，留在主线程；它只是一次整图绘制，比编码便宜得多。
         let output = EditorRenderer.render(image: image, annotations: [], options: exportOptions) ?? image
 
         // 没开自动保存时至少保证剪贴板有内容，避免“截了个寂寞”。
-        if settings.copyToClipboard || !settings.autoSave {
+        let shouldCopy = settings.copyToClipboard || !settings.autoSave
+        let autoSave = settings.autoSave
+        let revealInFinder = settings.revealInFinder
+        let format = settings.format
+        let quality = settings.jpegQuality
+        let directory = settings.saveDirectory
+        let template = settings.filenameTemplate
+        let historyDirectory = HistoryStore.shared.directory
+
+        // 历史归档和另存都要把一张 5K 图重新编码；留在主线程就是快门后 0.3–1 秒的转圈，
+        // 现在只把编码丢到后台，主线程负责关覆盖层。覆盖层仍然放在最后收，
+        // 避免在视图自己的事件栈里提前把它释放。
+        if shouldCopy {
             ClipboardService.copy(image: output)
         }
 
-        if settings.autoSave {
-            do {
-                let url = try SaveService.save(
-                    image: output,
-                    to: settings.saveDirectory,
-                    format: settings.format,
-                    quality: settings.jpegQuality,
-                    template: settings.filenameTemplate
-                )
-                if settings.revealInFinder {
-                    NSWorkspace.shared.activateFileViewerSelecting([url])
+        Task.detached(priority: .userInitiated) { [weak self] in
+            let historyURL = HistoryStore.writeFile(image: output, in: historyDirectory)
+            var savedURL: URL?
+            var failure: Error?
+            if autoSave {
+                do {
+                    savedURL = try SaveService.save(
+                        image: output,
+                        to: directory,
+                        format: format,
+                        quality: quality,
+                        template: template
+                    )
+                } catch {
+                    failure = error
                 }
-            } catch {
-                showError(error)
+            }
+            await MainActor.run { [weak self] in
+                if let historyURL {
+                    HistoryStore.shared.register(historyURL, width: image.width, height: image.height)
+                }
+                if let savedURL, revealInFinder {
+                    NSWorkspace.shared.activateFileViewerSelecting([savedURL])
+                }
+                if let failure {
+                    self?.showError(failure)
+                }
             }
         }
 

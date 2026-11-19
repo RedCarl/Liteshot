@@ -122,6 +122,12 @@ final class PinWindowController: NSWindowController, NSWindowDelegate {
     private func closePin() {
         window?.orderOut(nil)
         window?.contentView = nil
+        // 关掉贴图后必须通知 PinManager：否则控制器的数组一直持有这个
+        // controller 和它的整张全分辨率 CGImage（4K 一张约 33 MB），
+        // 「隐藏/显示所有贴图」还会把已经关掉的空窗口再显示出来。
+        let notify = onClose
+        onClose = nil
+        notify?()
     }
 
     private func copyImage() {
